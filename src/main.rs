@@ -7,8 +7,23 @@
 //!   - mỗi tab   : một webview con, tab chưa dùng được nạp lười (lazy) khi khôi phục phiên.
 //!   - `overlay` : webview nổi trên cùng cho gợi ý địa chỉ / lệnh / tìm trong trang.
 //!   - Rust giữ toàn bộ trạng thái (tab, bookmark, lịch sử), UI chỉ là bộ vẽ.
+//!
+//! Aurora 0.3:
+//!   - Một `WebContext` dùng chung cho mọi webview: cookie/bộ nhớ đệm dùng
+//!     chung giữa các tab VÀ lưu bền vững => đăng nhập Google / Microsoft
+//!     còn nguyên sau khi tắt mở lại trình duyệt.
+//!   - Giao thức tùy chỉnh `aurora://`: trang chủ mới (đồng hồ, tìm kiếm,
+//!     phím tắt), ảnh nền .png/.jpg/.gif/.webp/.mp4/.webm…, trang cài đặt.
+//!   - User-agent "hình Chrome" để đăng nhập Google / Microsoft trên WebKitGTK.
+//!   - Đổi công cụ tìm kiếm ngay trên trang chủ (Google / Bing / DuckDuckGo /
+//!     Brave / Yandex) — hữu ích khi Google bị giới hạn.
+//!   - Tăng tốc: luôn dùng GPU, canvas 2D tăng tốc, cuộn mượt, WebRTC + media.
 
+mod config;
 mod store;
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+mod wallhttp;
 
 use serde_json::json;
 use store::{host_of, SavedTab, Store};
@@ -20,19 +35,43 @@ use tao::{
 };
 use wry::{
     dpi::{LogicalPosition, LogicalSize},
-    PageLoadEvent, Rect, WebView, WebViewBuilder,
+    PageLoadEvent, Rect, WebContext, WebView, WebViewBuilder,
 };
+
+// FIX BUILD v0.2 -> v0.3: `build_gtk` (dùng khi dựng webview vào gtk::Fixed)
+// và `webview()` (lấy WebKitGTK webview gốc để tinh chỉnh) nằm trong trait
+// mở rộng của wry trên Linux — muốn dùng phải đưa trait vào scope.
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+use wry::{WebViewBuilderExtUnix, WebViewExtUnix};
+
+use config::{ENGINES, SharedConfig};
+use std::borrow::Cow;
+use std::sync::OnceLock;
+
+/// Cổng của máy chủ HTTP ảnh/video nền (Linux).
+static WALL_PORT: OnceLock<Option<u16>> = OnceLock::new();
 
 const KEYS: &str = include_str!("keys.js");
 const PAGE: &str = include_str!("page.js");
 const NEWTAB_HTML: &str = include_str!("newtab.html");
+const SETTINGS_HTML: &str = include_str!("settings.html");
 
 const TOP_H: f64 = 52.0;
 const SIDEBAR_W: f64 = 248.0;
 const SIDEBAR_C: f64 = 60.0;
 
-const SEARCH: &str = "https://www.google.com/search?q=";
-const SEARCH_NAME: &str = "Google";
+/// Tiền tố URL nội bộ.
+/// Linux/macOS: `aurora://local/<trang>`; Windows: wry ánh xạ custom protocol
+/// sang `http://aurora.local/<trang>`. Trang và ảnh nền dùng chung "host"
+/// để WebKit coi là cùng nguồn (giống kiến trúc của Tauri).
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+const INTERNAL_BASE: &str = "aurora://local/";
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+const INTERNAL_BASE: &str = "http://aurora.local/";
+
+fn internal_url(page: &str) -> String {
+    format!("{INTERNAL_BASE}{page}")
+}
 
 /// (id, tên lệnh, phím tắt)
 const COMMANDS: &[(&str, &str, &str)] = &[
@@ -49,6 +88,8 @@ const COMMANDS: &[(&str, &str, &str)] = &[
     ("zoomreset", "Đặt lại zoom", "Ctrl 0"),
     ("devtools", "Công cụ nhà phát triển", "F12"),
     ("print", "In trang", ""),
+    ("settings", "Cài đặt (ảnh nền, tìm kiếm…)", ""),
+    ("wallpaper", "Đổi ảnh nền", ""),
     ("clearhistory", "Xoá lịch sử duyệt web", ""),
 ];
 
@@ -56,6 +97,7 @@ const COMMANDS: &[(&str, &str, &str)] = &[
 const BANGS: &[(&str, &str)] = &[
     ("g", "https://www.google.com/search?q="),
     ("ddg", "https://duckduckgo.com/?q="),
+    ("b", "https://www.bing.com/search?q="),
     ("yt", "https://www.youtube.com/results?search_query="),
     ("gh", "https://github.com/search?q="),
     ("w", "https://vi.wikipedia.org/w/index.php?search="),
@@ -86,6 +128,8 @@ enum UserEvent {
     Chrome(String),
     Overlay(String),
     Tab(u32, TabMsg),
+    /// Người dùng vừa chọn tệp ảnh nền từ hộp thoại hệ thống.
+    Wallpaper(Option<String>),
 }
 
 // ---------------------------------------------------------------------------
@@ -111,8 +155,8 @@ fn urlencode(s: &str) -> String {
     out
 }
 
-/// Trả về (url, là_tìm_kiếm).
-fn resolve(input: &str) -> (String, bool) {
+/// Trả về (url, là_tìm_kiếm). `search` là URL của công cụ tìm kiếm đang chọn.
+fn resolve(input: &str, search: &str) -> (String, bool) {
     let t = input.trim();
     if t.is_empty() {
         return (String::new(), false);
@@ -130,17 +174,144 @@ fn resolve(input: &str) -> (String, bool) {
             || host.starts_with("10.");
         (format!("{}://{}", if local { "http" } else { "https" }, t), false)
     } else {
-        (format!("{}{}", SEARCH, urlencode(t)), true)
+        (format!("{}{}", search, urlencode(t)), true)
     }
 }
 
-/// URL nội bộ (trang New Tab) thì coi như rỗng.
+/// URL nội bộ (trang chủ, cài đặt) thì coi như rỗng.
 fn display_url(u: &str) -> String {
-    if u.starts_with("about:") || u.starts_with("data:") || u.starts_with("wry:") || u.contains("wry.localhost") {
+    if u.starts_with("about:")
+        || u.starts_with("data:")
+        || u.starts_with("wry:")
+        || u.contains("wry.localhost")
+        || u.starts_with("aurora://")
+        || u.starts_with("http://aurora.")
+    {
         String::new()
     } else {
         u.to_string()
     }
+}
+
+// ---------------------------------------------------------------------------
+// Giao thức nội bộ `aurora://` : trang chủ, ảnh nền, cài đặt
+// ---------------------------------------------------------------------------
+
+fn internal_response(status: u16, mime: &str, body: Vec<u8>) -> wry::http::Response<Cow<'static, [u8]>> {
+    wry::http::Response::builder()
+        .status(status)
+        .header("Content-Type", mime)
+        .header("Cache-Control", "no-cache")
+        .body(Cow::Owned(body))
+        .unwrap_or_else(|_| wry::http::Response::new(Cow::Borrowed(&b""[..])))
+}
+
+/// Lấy "tuyến" từ URI:
+/// `aurora://local/newtab` / `http://aurora.local/newtab` => `newtab`
+/// (dự phòng khi URL không có path: `aurora://newtab` / `http://aurora.newtab`).
+fn route_of(uri: &wry::http::Uri) -> String {
+    let path = uri.path().trim_matches('/');
+    if !path.is_empty() {
+        return path.to_string();
+    }
+    let raw = uri.host().map(str::to_string).unwrap_or_default();
+    let raw = raw.trim_matches('.');
+    raw.strip_prefix("aurora.").unwrap_or(raw).to_string()
+}
+
+/// Phục vụ nội bộ: trang chủ / ảnh nền / trang cài đặt.
+fn serve_internal(c: &config::Config, uri: &wry::http::Uri, port: Option<u16>) -> wry::http::Response<Cow<'static, [u8]>> {
+    let route = route_of(uri);
+    if std::env::var("AURORA_DEBUG").is_ok() {
+        eprintln!("[aurora] aurora-scheme: {uri} -> {route}");
+    }
+    match route.as_str() {
+"newtab" => internal_response(200, "text/html; charset=utf-8", render_newtab(c, port).into_bytes()),
+        "settings" => internal_response(200, "text/html; charset=utf-8", render_settings(c, port).into_bytes()),
+        "wallpaper" => {
+            let path = c.wallpaper.as_deref().unwrap_or("");
+            match (config::wallpaper_mime(path), std::fs::read(path)) {
+                (Some(mime), Ok(bytes)) => internal_response(200, mime, bytes),
+                _ => internal_response(404, "text/plain; charset=utf-8", b"khong co nen".to_vec()),
+            }
+        }
+        _ => internal_response(404, "text/plain; charset=utf-8", b"khong tim thay".to_vec()),
+    }
+}
+
+/// URL của tệp nền. Video trên Linux đi qua HTTP cục bộ vì WebKitGTK không
+/// phát media từ custom scheme; các loại khác dùng `aurora://`.
+fn wallpaper_url(mime: &str, v: u64, port: Option<u16>) -> String {
+    let direct = format!("{INTERNAL_BASE}wallpaper?v={v}");
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    if mime.starts_with("video/") {
+        if let Some(p) = port {
+            return format!("http://127.0.0.1:{p}/wallpaper?v={v}");
+        }
+    }
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    let _ = port;
+    direct
+}
+
+/// (url ảnh nền kèm số phiên bản, mime) — rỗng nếu chưa đặt hoặc tệp không đọc được.
+fn wallpaper_info(c: &config::Config, port: Option<u16>) -> (String, &'static str) {
+    let Some(path) = c.wallpaper.as_deref() else {
+        return (String::new(), "");
+    };
+    let Some(mime) = config::wallpaper_mime(path) else {
+        return (String::new(), "");
+    };
+    let Ok(meta) = std::fs::metadata(path) else {
+        return (String::new(), "");
+    };
+    let v = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    (wallpaper_url(mime, v, port), mime)
+}
+
+fn engines_json() -> serde_json::Value {
+    ENGINES
+        .iter()
+        .map(|e| json!({ "id": e.id, "name": e.name }))
+        .collect::<Vec<_>>()
+        .into()
+}
+
+fn render_newtab(c: &config::Config, port: Option<u16>) -> String {
+    let engine = config::engine_of(&c.engine);
+    let (wp, mime) = wallpaper_info(c, port);
+    let cfg = json!({
+        "base": INTERNAL_BASE,
+        "wallpaper": wp,
+        "wpmime": mime,
+        "engine": engine.id,
+        "engines": engines_json(),
+        "settings": internal_url("settings"),
+        "nativePicker": cfg!(not(any(target_os = "windows", target_os = "macos"))),
+    });
+    NEWTAB_HTML.replace("/*CFG*/null", &cfg.to_string())
+}
+
+fn render_settings(c: &config::Config, port: Option<u16>) -> String {
+    let engine = config::engine_of(&c.engine);
+    let (wp, mime) = wallpaper_info(c, port);
+    let cfg = json!({
+        "base": INTERNAL_BASE,
+        "wallpaper": wp,
+        "wpmime": mime,
+        "engine": engine.id,
+        "engines": engines_json(),
+        "ua": c.ua_compat,
+        "gpu": c.gpu_always,
+        "home": internal_url("newtab"),
+        "nativePicker": cfg!(not(any(target_os = "windows", target_os = "macos"))),
+    });
+    SETTINGS_HTML.replace("/*CFG*/null", &cfg.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -169,11 +340,48 @@ impl Host {
     }
 }
 
+/// Tinh chỉnh WebKitGTK cho mượt và nhanh hơn (chỉ Linux):
+/// canvas 2D tăng tốc GPU, cuộn mượt, WebRTC/media cho gọi video,
+/// và chính sách "luôn dùng GPU" nếu bật trong cấu hình.
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn tune_webview(wv: &WebView, c: &config::Config) {
+    use webkit2gtk::{SettingsExt, WebViewExt};
+    let wk = wv.webview();
+    if let Some(s) = wk.settings() {
+        // (canvas 2D tăng tốc là mặc định từ WebKit 2.32)
+        s.set_enable_smooth_scrolling(true);
+        s.set_enable_media_stream(true);
+        s.set_enable_webrtc(true);
+        if c.gpu_always {
+            s.set_hardware_acceleration_policy(webkit2gtk::HardwareAccelerationPolicy::Always);
+        }
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+fn tune_webview(_wv: &WebView, _c: &config::Config) {}
+
+/// Tệp tải về lưu vào ~/Downloads, tự đổi tên khi trùng.
+fn unique_download_path(mut p: std::path::PathBuf) -> std::path::PathBuf {
+    if !p.exists() {
+        return p;
+    }
+    let parent = p.parent().map(|x| x.to_path_buf()).unwrap_or_default();
+    let stem = p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let ext = p.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    let mut i = 1;
+    while p.exists() {
+        p = parent.join(format!("{stem} ({i}){ext}"));
+        i += 1;
+    }
+    p
+}
+
 /// Overlay luôn phải nằm trên cùng, nên được dựng lại mỗi khi có tab mới.
-fn make_overlay(host: &Host, proxy: &EventLoopProxy<UserEvent>) -> WebView {
+fn make_overlay(host: &Host, ctx: &mut WebContext, proxy: &EventLoopProxy<UserEvent>) -> WebView {
     let p = proxy.clone();
     host.attach(
-        WebViewBuilder::new()
+        WebViewBuilder::with_web_context(ctx)
             .with_transparent(true)
             .with_visible(false)
             .with_html(include_str!("overlay.html"))
@@ -233,6 +441,12 @@ struct App {
     mode: Mode,
     closed: Vec<String>,
     visit_count: u32,
+    /// Cấu hình dùng chung (tìm kiếm, ảnh nền, UA, GPU).
+    config: SharedConfig,
+    /// WebContext dùng chung: cookie + cache + storage lưu bền vững.
+    web_context: WebContext,
+    /// Đang nhận tệp ảnh nền đẩy từ trang cài đặt (Windows/macOS).
+    wp_out: Option<(std::fs::File, String)>,
 }
 
 impl App {
@@ -323,6 +537,16 @@ impl App {
         let _ = self.chrome.evaluate_script("window.focusUrl&&window.focusUrl()");
     }
 
+    fn search_url(&self) -> String {
+        let c = self.config.lock().unwrap();
+        config::engine_of(&c.engine).url.to_string()
+    }
+
+    fn search_name(&self) -> String {
+        let c = self.config.lock().unwrap();
+        config::engine_of(&c.engine).name.to_string()
+    }
+
     // ----- đẩy trạng thái xuống UI ---------------------------------------
 
     fn push_state(&self) {
@@ -376,11 +600,26 @@ impl App {
         self.next_id += 1;
         let load_now = activate && url.is_some();
 
+        let (w, h) = self.win_size();
+        let sw = self.sidebar_w();
+
         let (p_title, p_load, p_ipc) = (self.proxy.clone(), self.proxy.clone(), self.proxy.clone());
         let script = page_script();
-        let mut b = WebViewBuilder::new()
+        let cfg = self.config.lock().unwrap().clone();
+        let scheme_cfg = self.config.clone();
+        let scheme_port = WALL_PORT.get().copied().flatten();
+
+        let mut b = WebViewBuilder::with_web_context(&mut self.web_context)
+            // Giao thức nội bộ: aurora://newtab | aurora://wallpaper | aurora://settings
+            .with_custom_protocol("aurora".into(), move |_id, request| {
+                let c = scheme_cfg.lock().unwrap().clone();
+                serve_internal(&c, request.uri(), scheme_port)
+            })
             .with_devtools(true)
             .with_back_forward_navigation_gestures(true)
+            // cho phép nền .mp4/.webm tự phát, copy/paste trong trang
+            .with_autoplay(true)
+            .with_clipboard(true)
             .with_initialization_script(&script)
             .with_document_title_changed_handler(move |t| {
                 let _ = p_title.send_event(UserEvent::Tab(id, TabMsg::Title(t)));
@@ -394,14 +633,18 @@ impl App {
                 let _ = p_ipc.send_event(UserEvent::Tab(id, TabMsg::Ipc(req.body().clone())));
             });
 
+        // UA "hình Chrome" => Google/Microsoft cho đăng nhập trên WebKitGTK.
+        if cfg.ua_compat {
+            b = b.with_user_agent(config::compat_ua());
+        }
+
         b = match (&url, load_now) {
             (Some(u), true) => b.with_url(u),
-            _ => b.with_html(NEWTAB_HTML),
+            _ => b.with_url(internal_url("newtab")),
         };
 
-        let (w, h) = self.win_size();
-        let sw = self.sidebar_w();
         let webview = self.host.attach(b, rect(sw, TOP_H, w - sw, h - TOP_H));
+        tune_webview(&webview, &cfg);
         if !activate {
             let _ = webview.set_visible(false);
         }
@@ -434,7 +677,7 @@ impl App {
     }
 
     fn rebuild_overlay(&mut self) {
-        self.overlay = make_overlay(&self.host, &self.proxy);
+        self.overlay = make_overlay(&self.host, &mut self.web_context, &self.proxy);
         self.mode = Mode::Hidden;
     }
 
@@ -508,7 +751,8 @@ impl App {
     }
 
     fn navigate(&mut self, id: u32, text: &str) {
-        let (url, _) = resolve(text);
+        let search = self.search_url();
+        let (url, _) = resolve(text, &search);
         if url.is_empty() {
             return;
         }
@@ -541,6 +785,118 @@ impl App {
         let (u, title) = (t.url.clone(), t.title.clone());
         self.store.toggle_bookmark(&u, &title);
         self.push_state();
+    }
+
+    // ----- cài đặt (tìm kiếm, ảnh nền, UA, GPU) --------------------------
+
+    fn set_engine(&mut self, id: &str) {
+        if ENGINES.iter().any(|e| e.id == id) {
+            if let Ok(mut c) = self.config.lock() {
+                c.engine = id.to_string();
+                config::save(&c);
+            }
+        }
+    }
+
+    fn set_flag(&mut self, ua: Option<bool>, gpu: Option<bool>) {
+        if let Ok(mut c) = self.config.lock() {
+            if let Some(v) = ua {
+                c.ua_compat = v;
+            }
+            if let Some(v) = gpu {
+                c.gpu_always = v;
+            }
+            config::save(&c);
+        }
+    }
+
+    fn set_wallpaper(&mut self, path: Option<String>) {
+        if let Ok(mut c) = self.config.lock() {
+            c.wallpaper = path;
+            config::save(&c);
+        }
+        self.reload_internal();
+    }
+
+    /// Nạp lại mọi tab nội bộ (trang chủ / cài đặt) để áp dụng nền mới.
+    fn reload_internal(&self) {
+        for t in &self.tabs {
+            if t.url.is_empty() {
+                let _ = t.webview.evaluate_script("location.reload()");
+            }
+        }
+    }
+
+    /// Hộp thoại chọn ảnh/video nền của hệ thống (Linux).
+    fn pick_wallpaper(&mut self) {
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        {
+            use gtk::prelude::*;
+            use gtk::{FileChooserAction, FileChooserNative, FileFilter, ResponseType};
+
+            let anc = self.host.fixed.ancestor(gtk::Window::static_type());
+            let parent = anc.as_ref().and_then(|w| w.downcast_ref::<gtk::Window>());
+            let dialog = FileChooserNative::new(
+                Some("Chọn ảnh hoặc video làm nền"),
+                parent,
+                FileChooserAction::Open,
+                Some("Chọn"),
+                Some("Huỷ"),
+            );
+            let filter = FileFilter::new();
+            filter.set_name(Some("Ảnh & video (png, jpg, gif, webp, mp4, webm…)"));
+            filter.add_pixbuf_formats();
+            for m in ["video/mp4", "video/webm", "video/x-matroska", "video/quicktime"] {
+                filter.add_mime_type(m);
+            }
+            dialog.add_filter(filter);
+
+            let proxy = self.proxy.clone();
+            dialog.connect_response(move |dlg, resp| {
+                if resp == ResponseType::Accept {
+                    if let Some(p) = dlg.filename() {
+                        let _ = proxy.send_event(UserEvent::Wallpaper(Some(
+                            p.to_string_lossy().into_owned(),
+                        )));
+                    }
+                }
+                dlg.destroy();
+            });
+            dialog.show();
+        }
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
+        {
+            self.new_tab(Some(internal_url("settings")));
+        }
+    }
+
+    /// Nhận ảnh nền đẩy theo từng phần từ trang cài đặt (Windows/macOS).
+    fn wp_begin(&mut self, name: &str) {
+        let ext = name.rsplit('.').next().unwrap_or("img").to_lowercase();
+        let path = store::dir().join("wallpaper.partial");
+        self.wp_out = std::fs::File::create(&path).ok().map(|f| (f, ext));
+    }
+
+    fn wp_chunk(&mut self, b64: &str) {
+        use std::io::Write;
+        if let Some((f, _)) = self.wp_out.as_mut() {
+            use base64::Engine;
+            if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(b64) {
+                let _ = f.write_all(&bytes);
+            }
+        }
+    }
+
+    fn wp_end(&mut self) {
+        if let Some((_f, ext)) = self.wp_out.take() {
+            drop(_f);
+            let ext = if config::wallpaper_mime(&format!("x.{ext}")).is_some() { ext } else { "png".to_string() };
+            let src = store::dir().join("wallpaper.partial");
+            let dst = store::dir().join(format!("wallpaper.{ext}"));
+            if std::fs::rename(&src, &dst).is_ok() {
+                self.set_wallpaper(Some(dst.to_string_lossy().into_owned()));
+            }
+        }
     }
 
     // ----- hành động chung (phím tắt + thanh lệnh) -----------------------
@@ -589,6 +945,10 @@ impl App {
                 }
             }
             "print" => self.eval_active("window.print()"),
+            "settings" => {
+                self.new_tab(Some(internal_url("settings")));
+            }
+            "wallpaper" => self.pick_wallpaper(),
             "nexttab" => self.cycle(1),
             "prevtab" => self.cycle(-1),
             "clearhistory" => {
@@ -675,9 +1035,9 @@ impl App {
                 action: String::new(),
             });
         } else {
-            let (url, is_search) = resolve(t);
+            let (url, is_search) = resolve(t, &self.search_url());
             if is_search {
-                out.push(Item { kind: "search", title: format!("Tìm “{t}”"), sub: SEARCH_NAME.into(), url, action: String::new() });
+                out.push(Item { kind: "search", title: format!("Tìm “{t}”"), sub: self.search_name(), url, action: String::new() });
             } else {
                 out.push(Item { kind: "go", title: url.clone(), sub: "Mở trang".into(), url, action: String::new() });
             }
@@ -825,6 +1185,7 @@ impl App {
             UserEvent::Chrome(m) => self.chrome_cmd(&m),
             UserEvent::Overlay(m) => self.overlay_cmd(&m),
             UserEvent::Tab(id, msg) => self.tab_event(id, msg),
+            UserEvent::Wallpaper(path) => self.set_wallpaper(path),
         }
     }
 
@@ -922,6 +1283,15 @@ impl App {
                         }
                         self.push_state();
                     }
+                    // ----- cài đặt từ trang chủ / trang cài đặt -----
+                    "setengine" => self.set_engine(arg),
+                    "setua" => self.set_flag(Some(arg == "1"), None),
+                    "setgpu" => self.set_flag(None, Some(arg == "1")),
+                    "pickwallpaper" => self.pick_wallpaper(),
+                    "clearwallpaper" => self.set_wallpaper(None),
+                    "wpbegin" => self.wp_begin(arg),
+                    "wpchunk" => self.wp_chunk(arg),
+                    "wpend" => self.wp_end(),
                     _ => {}
                 }
             }
@@ -998,6 +1368,13 @@ impl App {
 // ---------------------------------------------------------------------------
 
 fn main() {
+    // Với GPU đồ hoạ lỗi (màn hình đen/không vẽ được): chạy với
+    // AURORA_SAFE_RENDERER=1 để tắt DMA-BUF renderer của WebKit.
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    if std::env::var("AURORA_SAFE_RENDERER").as_deref() == Ok("1") {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
     let proxy = event_loop.create_proxy();
 
@@ -1027,18 +1404,71 @@ fn main() {
 
     let store = Store::load();
     let collapsed = store.session.sidebar_collapsed;
+    let config = config::shared();
 
-    let cp = proxy.clone();
+    // Linux: HTTP cục bộ phục vụ video nền (WebKitGTK không phát media qua custom scheme).
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let wall_port = wallhttp::start(config.clone());
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    let wall_port: Option<u16> = None;
+    let _ = WALL_PORT.set(wall_port);
+    if std::env::var("AURORA_DEBUG").is_ok() {
+        match wall_port {
+            Some(p) => eprintln!("[aurora] wallpaper http server: http://127.0.0.1:{p}/wallpaper"),
+            None => eprintln!("[aurora] wallpaper http server: không khởi động được"),
+        }
+    }
+
+    // Một WebContext duy nhất cho cả trình duyệt:
+    // cookie / cache / localStorage dùng chung giữa các tab và lưu bền vững
+    // trong thư mục dữ liệu (đăng nhập Google/Microsoft giữ nguyên sau restart).
+    let profile = store::dir().join("webdata");
+    let _ = std::fs::create_dir_all(&profile);
+    let mut web_context = WebContext::new(Some(profile));
+
+    // Tải về lưu vào ~/Downloads.
+    let cp_dl = proxy.clone();
     let chrome_page = chrome_html();
     let chrome = host.attach(
-        WebViewBuilder::new()
+        WebViewBuilder::with_web_context(&mut web_context)
             .with_html(&chrome_page)
             .with_ipc_handler(move |req| {
-                let _ = cp.send_event(UserEvent::Chrome(req.body().clone()));
+                let _ = cp_dl.send_event(UserEvent::Chrome(req.body().clone()));
+            })
+            .with_download_started_handler(|_url, path| {
+                if let Some(dl) = dirs::download_dir() {
+                    let _ = std::fs::create_dir_all(&dl);
+                    if let Some(name) = path.file_name() {
+                        *path = unique_download_path(dl.join(name));
+                    }
+                }
+                true
+            })
+            .with_download_completed_handler(|_url, path, ok| {
+                if ok {
+                    let p = path
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| "tệp đã tải".into());
+                    println!("[aurora] đã tải xong: {p}");
+                }
             }),
         rect(0.0, 0.0, 1360.0, 860.0),
     );
-    let overlay = make_overlay(&host, &proxy);
+
+    // Linux: bật favicon database để biểu tượng tab đẹp và chuẩn hơn.
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        use webkit2gtk::{WebContextExt, WebViewExt};
+        let wk = chrome.webview();
+        if let Some(ctx) = wk.context() {
+            let fdir = store::dir().join("favicons");
+            let _ = std::fs::create_dir_all(&fdir);
+            ctx.set_favicon_database_directory(Some(&fdir.to_string_lossy()));
+        }
+        tune_webview(&chrome, &config.lock().unwrap());
+    }
+
+    let overlay = make_overlay(&host, &mut web_context, &proxy);
 
     let mut app = App {
         host,
@@ -1056,6 +1486,9 @@ fn main() {
         mode: Mode::Hidden,
         closed: Vec::new(),
         visit_count: 0,
+        config,
+        web_context,
+        wp_out: None,
     };
     app.restore();
 

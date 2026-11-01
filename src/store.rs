@@ -15,21 +15,22 @@ pub fn now() -> u64 {
         .unwrap_or(0)
 }
 
-fn dir() -> PathBuf {
+/// Thư mục dữ liệu của aurora (dùng chung cho bookmark, lịch sử, phiên, cấu hình, webdata).
+pub(crate) fn dir() -> PathBuf {
     let mut p = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
     p.push("aurora");
     let _ = fs::create_dir_all(&p);
     p
 }
 
-fn load<T: for<'de> Deserialize<'de> + Default>(name: &str) -> T {
+pub(crate) fn load<T: for<'de> Deserialize<'de> + Default>(name: &str) -> T {
     fs::read_to_string(dir().join(name))
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default()
 }
 
-fn save<T: Serialize>(name: &str, v: &T) {
+pub(crate) fn save<T: Serialize>(name: &str, v: &T) {
     if let Ok(s) = serde_json::to_string(v) {
         let tmp = dir().join(format!("{name}.tmp"));
         if fs::write(&tmp, s).is_ok() {

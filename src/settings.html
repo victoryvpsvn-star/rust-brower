@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cài đặt</title>
+<style>
+  :root { --text: #eef0ff; --mut: rgba(238,240,255,.55); --glass: rgba(255,255,255,.07); --line: rgba(255,255,255,.14); --a1: #8b7bff; --a2: #5eb8ff; --card: rgba(18,20,30,.55); color-scheme: dark; }
+  @media (prefers-color-scheme: light) {
+    :root { --text: #1a1c26; --mut: rgba(26,28,38,.55); --glass: rgba(255,255,255,.7); --line: rgba(0,0,0,.1); --a1: #6c5cf0; --a2: #2f8ff0; --card: rgba(255,255,255,.75); color-scheme: light; }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body { color: var(--text); font: 15px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow-y: auto;
+    background: radial-gradient(1100px 650px at 15% 0%, color-mix(in srgb, var(--a1) 28%, transparent), transparent 60%),
+                radial-gradient(900px 600px at 90% 100%, color-mix(in srgb, var(--a2) 22%, transparent), transparent 55%), #12131a; }
+  @media (prefers-color-scheme: light) { body { background-color: #f1f2f8; } }
+  main { max-width: 640px; margin: 0 auto; padding: 36px 20px 60px; animation: in .4s ease-out; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
+  header a { display: inline-flex; align-items: center; gap: 6px; color: var(--mut); text-decoration: none; font-size: 13px; padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line); background: var(--glass); transition: color .15s, border-color .15s; }
+  header a:hover { color: var(--text); border-color: var(--a1); }
+  header a svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  header h1 { font-size: 22px; font-weight: 650; letter-spacing: -.3px; }
+
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 20px 22px; margin-bottom: 16px; backdrop-filter: blur(14px); }
+  h2 { font-size: 13px; font-weight: 600; letter-spacing: .6px; text-transform: uppercase; color: var(--mut); margin-bottom: 14px; }
+
+  /* ô xem trước ảnh nền */
+  #preview { width: 100%; aspect-ratio: 16/8.4; border-radius: 12px; overflow: hidden; background:
+    repeating-conic-gradient(rgba(128,128,128,.08) 0% 25%, transparent 0% 50%) 0 0 / 22px 22px, rgba(128,128,128,.10);
+    display: grid; place-items: center; color: var(--mut); font-size: 13px; }
+  #preview img, #preview video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .btns { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px; border-radius: 20px;
+    border: 1px solid var(--line); background: var(--glass); color: var(--text); font: 14px inherit; cursor: pointer;
+    transition: border-color .15s, background .15s, transform .1s; }
+  .btn:hover { border-color: var(--a1); }
+  .btn:active { transform: scale(.97); }
+  .btn.primary { background: linear-gradient(135deg, var(--a1), var(--a2)); color: #fff; border-color: transparent; box-shadow: 0 4px 18px color-mix(in srgb, var(--a1) 40%, transparent); }
+  .btn.danger:hover { border-color: #ff6b6b; color: #ff9d9d; }
+  .btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  #prog { display: none; margin-top: 10px; height: 6px; border-radius: 3px; background: var(--glass); overflow: hidden; }
+  #prog.on { display: block; }
+  #prog i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--a1), var(--a2)); transition: width .12s; }
+  #wphint { margin-top: 12px; color: var(--mut); font-size: 12.5px; line-height: 1.5; }
+
+  /* hàng lựa chọn */
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .row .l { flex: 1; min-width: 0; }
+  .row .l b { font-weight: 600; font-size: 14.5px; }
+  .row .l p { color: var(--mut); font-size: 12.5px; margin-top: 3px; line-height: 1.45; }
+
+  /* công cụ tìm kiếm */
+  .eng { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { padding: 8px 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--glass); color: var(--mut); font: 13px inherit; cursor: pointer; transition: color .15s, background .15s, border-color .15s, transform .1s; }
+  .chip:hover { color: var(--text); }
+  .chip:active { transform: scale(.95); }
+  .chip.on { background: linear-gradient(135deg, var(--a1), var(--a2)); color: #fff; border-color: transparent; box-shadow: 0 4px 18px color-mix(in srgb, var(--a1) 40%, transparent); }
+
+  /* công tắc */
+  .sw { position: relative; width: 46px; height: 26px; border-radius: 13px; background: var(--glass); border: 1px solid var(--line); cursor: pointer; flex: none; transition: background .18s, border-color .18s; }
+  .sw i { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--mut); transition: left .18s, background .18s; }
+  .sw.on { background: linear-gradient(135deg, var(--a1), var(--a2)); border-color: transparent; }
+  .sw.on i { left: 23px; background: #fff; }
+
+  footer { text-align: center; color: var(--mut); font-size: 12px; margin-top: 8px; }
+  @keyframes in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <a href="#" id="back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Trang chủ</a>
+    <h1>Cài đặt</h1>
+  </header>
+
+  <section>
+    <h2>Ảnh nền trang chủ</h2>
+    <div id="preview"><span>Chưa có ảnh nền</span></div>
+    <input type="file" id="file" accept="image/*,video/*" hidden>
+    <div class="btns">
+      <button class="btn primary" id="pick">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 9"/></svg>Chọn tệp…
+      </button>
+      <button class="btn danger" id="clear">
+        <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>Xoá nền
+      </button>
+    </div>
+    <div id="prog"><i></i></div>
+    <p id="wphint">Hỗ trợ ảnh (.png, .jpg, .gif, .webp, .avif, .bmp) và video động (.mp4, .webm, .mkv, .mov). Ảnh gif và video sẽ chạy động ngay trên trang chủ.</p>
+  </section>
+
+  <section>
+    <h2>Công cụ tìm kiếm mặc định</h2>
+    <div class="eng" id="engines"></div>
+    <div class="row" style="margin-top:10px; border:0; padding-bottom:0">
+      <div class="l"><b>Mẹo</b><p>Google hay bị giới hạn tốc độ tra cứu — đổi sang Bing, DuckDuckGo, Brave hay Yandex chỉ với 1 cú bấm. Gõ <b>!g</b>, <b>!ddg</b>, <b>!b</b> trước từ khoá để tìm nhanh từng trang.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Tương thích &amp; hiệu năng</h2>
+    <div class="row">
+      <div class="l"><b>Đăng nhập Google / Microsoft</b><p>Dùng user-agent "hình Chrome" để Google cho phép đăng nhập trên engine WebKit. Áp dụng cho tab mở từ giờ.</p></div>
+      <div class="sw" id="ua"><i></i></div>
+    </div>
+    <div class="row">
+      <div class="l"><b>Luôn dùng tăng tốc GPU</b><p>Canvas 2D tăng tốc, compositing GPU — trang vẽ mượt hơn, FPS cao hơn. Áp dụng cho tab mở từ giờ.</p></div>
+      <div class="sw" id="gpu"><i></i></div>
+    </div>
+  </section>
+
+  <footer>Aurora 0.3 · cookie &amp; đăng nhập được lưu ở thư mục dữ liệu người dùng</footer>
+</main>
+
+<script>
+  const CFG = /*CFG*/null;
+  const send = (m) => { try { window.ipc.postMessage(m); } catch (e) {} };
+  const $ = (s) => document.querySelector(s);
+
+  $('#back').onclick = (e) => { e.preventDefault(); location.href = CFG.home; };
+
+  /* ---------- ảnh nền ---------- */
+  function drawPreview() {
+    const p = $('#preview');
+    p.replaceChildren();
+    if (!CFG.wallpaper) {
+      const s = document.createElement('span'); s.textContent = 'Chưa có ảnh nền';
+      p.appendChild(s); return;
+    }
+    if (CFG.wpmime.indexOf('video/') === 0) {
+      const v = document.createElement('video');
+      v.src = CFG.wallpaper; v.loop = true; v.muted = true; v.autoplay = true;
+      v.setAttribute('playsinline', '');
+      v.play().catch(() => {});
+      p.appendChild(v);
+    } else {
+      const i = new Image(); i.src = CFG.wallpaper; i.alt = '';
+      p.appendChild(i);
+    }
+  }
+  drawPreview();
+
+  /* Linux: hộp thoại hệ thống qua IPC. Windows/macOS: input file + đẩy theo phần. */
+  if (CFG.nativePicker) {
+    $('#pick').onclick = () => send('pickwallpaper|');
+  } else {
+    $('#pick').onclick = () => $('#file').click();
+    $('#file').onchange = () => { const f = $('#file').files[0]; if (f) upload(f); };
+  }
+  $('#clear').onclick = () => send('clearwallpaper|');
+
+  async function upload(file) {
+    const btn = $('#pick'), bar = $('#prog'), fill = bar.querySelector('i');
+    btn.disabled = true; bar.classList.add('on');
+    try {
+      const buf = new Uint8Array(await file.arrayBuffer());
+      send('wpbegin|' + file.name);
+      const CH = 96 * 1024;
+      for (let i = 0; i < buf.length; i += CH) {
+        let s = '';
+        const part = buf.subarray(i, Math.min(i + CH, buf.length));
+        for (let j = 0; j < part.length; j += 8192) {
+          s += String.fromCharCode.apply(null, part.subarray(j, Math.min(j + 8192, part.length)));
+        }
+        send('wpchunk|' + btoa(s));
+        fill.style.width = Math.round(Math.min(i + CH, buf.length) / buf.length * 100) + '%';
+        await new Promise((r) => setTimeout(r));
+      }
+      send('wpend|');
+    } catch (e) {
+      send('wpend|');
+    }
+    btn.disabled = false;
+    setTimeout(() => bar.classList.remove('on'), 600);
+  }
+
+  /* ---------- công cụ tìm kiếm ---------- */
+  function drawEngines() {
+    const box = $('#engines'); box.replaceChildren();
+    for (const e of CFG.engines) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'chip' + (e.id === CFG.engine ? ' on' : '');
+      b.textContent = e.name;
+      b.onclick = () => {
+        CFG.engine = e.id; drawEngines();
+        send('setengine|' + e.id);
+      };
+      box.appendChild(b);
+    }
+  }
+  drawEngines();
+
+  /* ---------- công tắc ---------- */
+  function sw(id, on, msg) {
+    const el = $('#' + id);
+    el.classList.toggle('on', !!on);
+    el.onclick = () => {
+      const v = !el.classList.contains('on');
+      el.classList.toggle('on', v);
+      send(msg + '|' + (v ? '1' : '0'));
+    };
+  }
+  sw('ua', CFG.ua, 'setua');
+  sw('gpu', CFG.gpu, 'setgpu');
+</script>
+</body>
+</html>

@@ -11,36 +11,101 @@
   }
   * { box-sizing: border-box; margin: 0; }
   html, body { height: 100%; }
-  body { display: grid; place-items: center; color: var(--text); font: 15px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  body { color: var(--text); font: 15px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     background: radial-gradient(1100px 650px at 15% 0%, color-mix(in srgb, var(--a1) 30%, transparent), transparent 60%),
-                radial-gradient(900px 600px at 90% 100%, color-mix(in srgb, var(--a2) 25%, transparent), transparent 55%), #12131a; }
+                radial-gradient(900px 600px at 90% 100%, color-mix(in srgb, var(--a2) 25%, transparent), transparent 55%), #12131a;
+    overflow: hidden; }
   @media (prefers-color-scheme: light) { body { background-color: #f1f2f8; } }
-  main { width: min(660px, 90vw); text-align: center; animation: in .5s ease-out; }
-  #clock { font-size: 76px; font-weight: 200; letter-spacing: -3px; line-height: 1; }
-  #date { margin: 8px 0 34px; color: var(--mut); }
+
+  /* ---------- lớp nền tùy thích (png / jpg / gif / webp / mp4 / webm) ---------- */
+  #bg { position: fixed; inset: 0; z-index: -2; overflow: hidden; background: #0c0d13; }
+  #bg img, #bg video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #bg::after { content: ""; position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(8,10,18,.18), rgba(8,10,18,.52)); }
+  /* khi có nền: chữ luôn sáng để đọc được */
+  body:not(.nowallpaper) { --text: #ffffff; --mut: rgba(255,255,255,.72); --glass: rgba(18,20,30,.34); --line: rgba(255,255,255,.22); }
+  body.nowallpaper #bg { display: none; }
+
+  main { position: relative; width: min(660px, 90vw); margin: 0 auto; height: 100%;
+    display: flex; flex-direction: column; justify-content: center; text-align: center; animation: in .5s ease-out; }
+  #clock { font-size: 76px; font-weight: 200; letter-spacing: -3px; line-height: 1; text-shadow: 0 2px 26px rgba(0,0,0,.35); }
+  #date { margin: 8px 0 30px; color: var(--mut); text-shadow: 0 1px 14px rgba(0,0,0,.3); }
   input { width: 100%; height: 54px; padding: 0 24px; border-radius: 27px; border: 1px solid var(--line); background: var(--glass); color: inherit; font: inherit; font-size: 16px; outline: none; backdrop-filter: blur(14px); transition: border-color .15s, box-shadow .15s; }
   input::placeholder { color: var(--mut); }
   input:focus { border-color: var(--a1); box-shadow: 0 0 0 4px color-mix(in srgb, var(--a1) 28%, transparent); }
-  .tiles { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; margin-top: 38px; min-height: 100px; }
+  .engines { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .chip { padding: 6px 15px; border-radius: 999px; border: 1px solid var(--line); background: var(--glass); color: var(--mut); font: 12.5px inherit; cursor: pointer; backdrop-filter: blur(10px); transition: color .15s, background .15s, border-color .15s, transform .1s; }
+  .chip:hover { color: var(--text); }
+  .chip:active { transform: scale(.95); }
+  .chip.on { background: linear-gradient(135deg, var(--a1), var(--a2)); color: #fff; border-color: transparent; box-shadow: 0 4px 18px color-mix(in srgb, var(--a1) 45%, transparent); }
+  .tiles { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; margin-top: 34px; min-height: 100px; }
   .tile { width: 96px; padding: 14px 6px 12px; border-radius: 16px; display: grid; justify-items: center; gap: 9px; color: inherit; text-decoration: none; font-size: 12.5px; transition: background .15s, transform .12s; }
   .tile:hover { background: var(--glass); transform: translateY(-3px); }
-  .tile .i { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; overflow: hidden; font-weight: 700; font-size: 19px; color: #fff; background: linear-gradient(135deg, var(--a1), var(--a2)); }
+  .tile .i { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; overflow: hidden; font-weight: 700; font-size: 19px; color: #fff; background: linear-gradient(135deg, var(--a1), var(--a2)); box-shadow: 0 4px 16px rgba(0,0,0,.25); }
   .tile .i img { width: 46px; height: 46px; object-fit: contain; background: #fff; padding: 9px; }
-  .tile span { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--mut); }
-  .tip { margin-top: 30px; color: var(--mut); font-size: 12.5px; }
+  .tile span { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--mut); text-shadow: 0 1px 10px rgba(0,0,0,.4); }
+  .tip { margin-top: 28px; color: var(--mut); font-size: 12.5px; }
   .tip kbd { font: 11.5px ui-monospace, monospace; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--line); background: var(--glass); }
+
+  /* ---------- nút góc dưới ---------- */
+  #corner { position: fixed; right: 18px; bottom: 16px; display: flex; gap: 8px; z-index: 5; }
+  .cbtn { display: flex; align-items: center; gap: 7px; height: 36px; padding: 0 15px; border-radius: 18px;
+    border: 1px solid var(--line); background: var(--glass); color: var(--mut); font: 12.5px inherit; cursor: pointer;
+    backdrop-filter: blur(12px); transition: color .15s, border-color .15s, transform .1s; }
+  .cbtn:hover { color: var(--text); border-color: var(--a1); }
+  .cbtn:active { transform: scale(.96); }
+  .cbtn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
   @keyframes in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 </style>
 </head>
 <body>
+<div id="bg"></div>
 <main>
   <div id="clock"></div>
   <div id="date"></div>
   <form id="f"><input id="q" autofocus autocomplete="off" spellcheck="false" placeholder="Tìm kiếm hoặc nhập địa chỉ web"></form>
+  <div class="engines" id="engines"></div>
   <div class="tiles" id="tiles"></div>
   <div class="tip"><kbd>Ctrl</kbd> <kbd>K</kbd> thanh địa chỉ · gõ <kbd>&gt;</kbd> xem lệnh · <kbd>!g</kbd> <kbd>!yt</kbd> <kbd>!gh</kbd> tìm nhanh</div>
 </main>
+<div id="corner">
+  <button class="cbtn" id="wall" title="Đổi ảnh nền (png, jpg, gif, webp, mp4, webm…)">
+    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 9"/></svg>Đổi nền
+  </button>
+  <button class="cbtn" id="gear" title="Cài đặt">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.82-.33 1.7 1.7 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.51 1.7 1.7 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .33-1.82 1.7 1.7 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.51-1 1.7 1.7 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.82.33h.01a1.7 1.7 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.51h.01a1.7 1.7 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.33 1.82v.01a1.7 1.7 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>Cài đặt
+  </button>
+</div>
+
 <script>
+  const CFG = /*CFG*/null;
+  const send = (m) => { try { window.ipc.postMessage(m); } catch (e) {} };
+  const $ = (s) => document.querySelector(s);
+
+  /* ---------- nền ---------- */
+  function applyWallpaper() {
+    const bg = $('#bg');
+    if (!CFG.wallpaper) { document.body.classList.add('nowallpaper'); bg.replaceChildren(); return; }
+    document.body.classList.remove('nowallpaper');
+    bg.replaceChildren();
+    if (CFG.wpmime.indexOf('video/') === 0) {
+      const v = document.createElement('video');
+      v.src = CFG.wallpaper; v.loop = true; v.muted = true; v.autoplay = true;
+      v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', '');
+      v.addEventListener('error', () => document.body.classList.add('nowallpaper'));
+      bg.appendChild(v);
+      const p = v.play(); if (p && p.catch) p.catch(() => {});
+    } else {
+      const i = new Image();
+      i.src = CFG.wallpaper; i.alt = '';
+      i.addEventListener('error', () => document.body.classList.add('nowallpaper'));
+      bg.appendChild(i);
+    }
+  }
+  applyWallpaper();
+
+  /* ---------- đồng hồ ---------- */
   const clock = document.getElementById('clock'), date = document.getElementById('date');
   function tick() {
     const d = new Date();
@@ -49,12 +114,27 @@
   }
   tick(); setInterval(tick, 10000);
 
+  /* ---------- tìm kiếm ---------- */
   document.getElementById('f').addEventListener('submit', (e) => {
     e.preventDefault();
     const v = document.getElementById('q').value.trim();
-    if (v) window.ipc.postMessage('nav|' + v);
+    if (v) send('nav|' + v);
   });
 
+  let engine = CFG.engine;
+  function drawEngines() {
+    const box = $('#engines'); box.replaceChildren();
+    for (const e of CFG.engines) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'chip' + (e.id === engine ? ' on' : '');
+      b.textContent = e.name; b.title = 'Tìm mặc định với ' + e.name;
+      b.onclick = () => { engine = e.id; drawEngines(); send('setengine|' + e.id); };
+      box.appendChild(b);
+    }
+  }
+  drawEngines();
+
+  /* ---------- phím tắt trang hay vào ---------- */
   const DEFAULTS = [
     ['Google', 'https://www.google.com'], ['YouTube', 'https://www.youtube.com'],
     ['GitHub', 'https://github.com'], ['Wikipedia', 'https://vi.wikipedia.org'], ['Rust', 'https://www.rust-lang.org']
@@ -82,6 +162,14 @@
     for (const x of [...d.bms, ...d.top]) { if (!seen.has(x.url)) { seen.add(x.url); out.push([x.title, x.url]); } }
     draw(out.length ? out : DEFAULTS);
   };
+
+  /* ---------- nút góc ---------- */
+  $('#gear').onclick = () => { location.href = CFG.settings; };
+  if (CFG.nativePicker) {
+    $('#wall').onclick = () => send('pickwallpaper|');
+  } else {
+    $('#wall').onclick = () => { location.href = CFG.settings; };
+  }
 </script>
 </body>
 </html>
