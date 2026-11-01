@@ -2,7 +2,7 @@
 
 Trình duyệt viết bằng Rust (tao + wry), giao diện thanh tab dọc kiểu Zen, thanh lệnh kiểu Min.
 
-**Bản 0.3** — sửa lỗi build Linux, đăng nhập Google/Microsoft, ảnh nền động, đổi công cụ tìm kiếm, tăng tốc GPU.
+**Bản 0.4 — "siêu bá vương cho game thủ"**: Cài đặt kiểu Google Chrome, Chế độ Game, đồng hồ FPS, chặn quảng cáo, ngủ tab tiết kiệm RAM.
 
 ## Chạy thử
 
@@ -20,40 +20,55 @@ sudo apt install gstreamer1.0-libav gstreamer1.0-plugins-bad gstreamer1.0-plugin
 
 Windows cần WebView2 (Windows 10/11 thường có sẵn). macOS không cần thêm gì.
 
-## Có gì mới trong 0.3
+## Có gì mới trong 0.4
 
-### Sửa lỗi build
-`error[E0599]: no method named build_gtk` — thiếu `use wry::WebViewBuilderExtUnix;` (trait chứa `build_gtk` trên Linux). Đã fix, kèm `WebViewExtUnix` để canh chỉnh WebKitGTK.
+### 🎮 Chế độ Game (Game Mode)
+- **F9** bật/tắt ngay, hoặc nút gamepad trên thanh công cụ.
+- Nâng ưu tiên tiến trình trình duyệt (nice -10 trên Linux), tắt cuộn mượt để **giảm độ trễ chuột → khung hình**.
+- **Tự bật khi vào toàn màn hình (F11)**, ra ngoài tự tắt (bật/tắt được trong Cài đặt).
 
-### Đăng nhập Google / Microsoft
-- **Một `WebContext` dùng chung cho mọi tab** (bản trước mỗi tab một context — cookie không chia sẻ!). Giờ cookie, bộ nhớ đệm, localStorage… dùng chung và **lưu bền vững** trong thư mục dữ liệu: tắt mở lại trình duyệt vẫn còn đăng nhập.
-- **User-agent "hình Chrome"** (bật mặc định, tắt được trong Cài đặt): Google chặn đăng nhập từ UA WebKitGTK mặc định ("trình duyệt này có thể không an toàn"), UA Chrome thì đăng nhập bình thường.
-- WebRTC + MediaStream bật sẵn cho Google Meet/Discord.
+### 🎯 Đồng hồ FPS (FPS overlay)
+- Số FPS lớn nổi ở góc phải màn hình (kiểu GeForce Experience), đổi màu theo chất lượng: xanh ≥110, xanh dương ≥55, vàng ≥28, đỏ <28.
+- Đo bằng `requestAnimationFrame` ngay trong trang — đúng FPS render thật của game/web.
+- Có thêm badge FPS nhỏ trên thanh công cụ.
 
-### Ảnh nền tùy thích (.png, .jpg, .gif, .webp, .mp4, .webm…)
-- Vào **Cài đặt → Ảnh nền → Chọn tệp…** (hoặc bấm "Đổi nền" ở góc dưới phải trang chủ).
-- Ảnh gif và **video động (.mp4/.webm) chạy ngay trên trang chủ**.
-- Ảnh đi qua giao thức nội bộ `aurora://`; video đi qua một HTTP server cục bộ (127.0.0.1, hỗ trợ Range/206) vì WebKitGTK không phát media trực tiếp từ custom scheme (bug.webkit.org #146351).
-- Nền lưu trong `config.json`, tự áp dụng lại lần sau.
+### 🛡 Ad Block Lite
+- Ẩn quảng cáo & trình theo dõi (DoubleClick, Taboola, Outbrain, Analytics, PopAds…) ở mức DOM.
+- Đếm số phần tử đã chặn, hiện trên thanh bên ("🛡 n quảng cáo đã chặn").
 
-### Đổi công cụ tìm kiếm nhanh
-Google bị giới hạn/đổi kết quả? Bấm chọn **Google / Bing / DuckDuckGo / Brave / Yandex** ngay dưới ô tìm kiếm của trang chủ. Gõ `!g`, `!ddg`, `!b`, `!yt`… trước từ khoá để tìm từng trang.
+### 😴 Ngủ tab (Sleeping Tabs)
+- Tab không dùng quá N phút (chọn 5–120 phút) tự "ngủ": trang gốc được thay bằng trang siêu nhẹ, **giải phóng RAM**, bấm vào là tỉnh lại ngay tại chỗ cũ.
+- Tab đang ghim không bao giờ ngủ.
 
-### Nhẹ, mượt, tăng FPS
-- Chính sách **"luôn dùng GPU"** (hardware-acceleration-policy = Always), bật trong Cài đặt → Tương thích & hiệu năng.
-- **Cuộn mượt** (smooth scrolling), WebRTC/Media bật, **favicon database** cho tab đẹp hơn.
-- `WebContext` chung ⇒ ít tiến trình WebKit hơn ⇒ nhẹ RAM hơn.
-- Download lưu thẳng vào `~/Downloads`, tự đổi tên khi trùng.
-- GPU lỗi/màn hình đen? Chạy `AURORA_SAFE_RENDERER=1 aurora` để tắt DMA-BUF renderer.
+### ⚙️ Cài đặt kiểu Google Chrome
+- Cột điều hướng trái (Bạn và Aurora, Giao diện, Công cụ tìm kiếm, Quyền riêng tư và bảo mật, Hiệu năng, Trò chơi, Hệ thống, Đặt lại cài đặt).
+- Ô **"Tìm kiếm trong Cài đặt"** lọc theo từ khoá như Chrome.
+- Công tắc toggle Material, **6 màu nhấn giao diện** (kể cả RGB Game Thủ) đổi là áp dụng tức thì.
+- Nút đặt lại cài đặt về mặc định, mở thư mục dữ liệu, xoá lịch sử.
+
+### Khác
+- **Khu game thủ trên trang chủ**: Krunker, Shell Shockers, Slither.io, 2048, Chess.com, Poki, CrazyGames, Steam, Epic, Discord, Twitch (tắt được trong Cài đặt).
+- Thanh bên hiển thị **RAM hệ thống (%) + số quảng cáo đã chặn**.
+- Bang mới: `!st` (Steam), `!tw` (Twitch).
+
+## Giữ từ bản 0.3
+
+- **Đăng nhập Google / Microsoft**: một `WebContext` dùng chung cho mọi tab, cookie/cache/localStorage **lưu bền vững** — tắt mở lại vẫn còn đăng nhập. User-agent "hình Chrome" để Google không chặn.
+- **Ảnh nền động** (.png, .jpg, .gif, .webp, .mp4, .webm…) qua `aurora://` + HTTP cục bộ (Range/206) cho video.
+- **Đổi công cụ tìm kiếm nhanh** (Google / Bing / DuckDuckGo / Brave / Yandex) + bang `!g !b !ddg !yt !gh !w !so !crates !docs !st !tw`.
+- WebRTC + MediaStream cho Google Meet/Discord, favicon database, download vào `~/Downloads`.
+- GPU lỗi/màn hình đen? `AURORA_SAFE_RENDERER=1 aurora`.
 
 ## Build tự động (GitHub Actions)
 
-Đẩy code lên GitHub, workflow `.github/workflows/build.yml` tự build cho Linux, Windows, macOS. File build xuất hiện ở tab **Actions → Artifacts**. Gắn tag `v*` (ví dụ `git tag v0.3.0 && git push --tags`) để tự tạo bản **Release** kèm file tải về.
+Đẩy code lên GitHub, workflow `.github/workflows/build.yml` tự build cho Linux, Windows, macOS. File build xuất hiện ở tab **Actions → Artifacts**. Gắn tag `v*` (ví dụ `git tag v0.4.0 && git push --tags`) để tự tạo bản **Release** kèm file tải về.
 
 ## Phím tắt
 
 | Phím | Việc |
 |---|---|
+| **F9** | **Bật/tắt Chế độ Game** |
+| **F11** | **Toàn màn hình** (tự bật Game Mode nếu cấu hình cho phép) |
 | Ctrl+T / Ctrl+W / Ctrl+Shift+T | Tab mới / đóng / mở lại tab đã đóng |
 | Ctrl+L hoặc Ctrl+K | Thanh địa chỉ |
 | Ctrl+F | Tìm trong trang |
@@ -64,11 +79,11 @@ Google bị giới hạn/đổi kết quả? Bấm chọn **Google / Bing / Duck
 | Alt+← / Alt+→ | Quay lại / tiến tới |
 | F12 | Công cụ nhà phát triển |
 
-Trong thanh địa chỉ: gõ `>` để xem lệnh, `!g` `!b` `!ddg` `!yt` `!gh` `!w` `!so` `!crates` `!docs` kèm từ khoá để tìm nhanh.
+Trong thanh địa chỉ: gõ `>` để xem lệnh, `!g` `!b` `!ddg` `!yt` `!st` `!tw` `!gh` `!w` `!so` `!crates` `!docs` kèm từ khoá để tìm nhanh.
 
 ## Dữ liệu người dùng
 
-Bookmark, lịch sử, phiên làm việc, cấu hình và **dữ liệu web (cookie/đăng nhập/cache)** nằm trong thư mục `aurora` của thư mục dữ liệu người dùng (Linux: `~/.local/share/aurora`).
+Bookmark, lịch sử, phiên làm việc, cấu hình và **dữ liệu web (cookie/đăng nhập/cache)** nằm trong thư mục `aurora` của thư mục dữ liệu người dùng (Linux: `~/.local/share/aurora`). Mở nhanh từ **Cài đặt → Bạn và Aurora → Mở thư mục**.
 
 ## Gỡ lỗi
 

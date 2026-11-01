@@ -5,123 +5,451 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cài đặt</title>
 <style>
-  :root { --text: #eef0ff; --mut: rgba(238,240,255,.55); --glass: rgba(255,255,255,.07); --line: rgba(255,255,255,.14); --a1: #8b7bff; --a2: #5eb8ff; --card: rgba(18,20,30,.55); color-scheme: dark; }
+  /* ===== Bảng màu kiểu Chrome (Material You) ===== */
+  :root {
+    --bg: #202124;        /* nền trang */
+    --nav: #202124;       /* nền sidebar */
+    --card: #292a2d;      /* thẻ cài đặt */
+    --card2: #2d2e31;     /* hover */
+    --text: #e8eaed;
+    --mut: #9aa0a6;
+    --line: #3c4043;
+    --blue: #8ab4f8;      /* nhấn Chrome dark */
+    --blue2: #aecbfa;
+    --danger: #f28b82;
+    color-scheme: dark;
+  }
   @media (prefers-color-scheme: light) {
-    :root { --text: #1a1c26; --mut: rgba(26,28,38,.55); --glass: rgba(255,255,255,.7); --line: rgba(0,0,0,.1); --a1: #6c5cf0; --a2: #2f8ff0; --card: rgba(255,255,255,.75); color-scheme: light; }
+    :root {
+      --bg: #ffffff; --nav: #f8f9fa; --card: #ffffff; --card2: #f1f3f4;
+      --text: #202124; --mut: #5f6368; --line: #e0e0e0;
+      --blue: #1a73e8; --blue2: #1a73e8; --danger: #d93025;
+      color-scheme: light;
+    }
   }
   * { box-sizing: border-box; margin: 0; }
   html, body { height: 100%; }
-  body { color: var(--text); font: 15px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow-y: auto;
-    background: radial-gradient(1100px 650px at 15% 0%, color-mix(in srgb, var(--a1) 28%, transparent), transparent 60%),
-                radial-gradient(900px 600px at 90% 100%, color-mix(in srgb, var(--a2) 22%, transparent), transparent 55%), #12131a; }
-  @media (prefers-color-scheme: light) { body { background-color: #f1f2f8; } }
-  main { max-width: 640px; margin: 0 auto; padding: 36px 20px 60px; animation: in .4s ease-out; }
-  header { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
-  header a { display: inline-flex; align-items: center; gap: 6px; color: var(--mut); text-decoration: none; font-size: 13px; padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line); background: var(--glass); transition: color .15s, border-color .15s; }
-  header a:hover { color: var(--text); border-color: var(--a1); }
-  header a svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  header h1 { font-size: 22px; font-weight: 650; letter-spacing: -.3px; }
+  body { color: var(--text); font: 14px system-ui, "Segoe UI", Roboto, "Google Sans", Arial, sans-serif;
+    background: var(--bg); display: flex; flex-direction: column; overflow: hidden; }
 
-  section { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 20px 22px; margin-bottom: 16px; backdrop-filter: blur(14px); }
-  h2 { font-size: 13px; font-weight: 600; letter-spacing: .6px; text-transform: uppercase; color: var(--mut); margin-bottom: 14px; }
+  /* ===== Thanh trên: nút quay lại + ô tìm kiếm cài đặt ===== */
+  #top { flex: none; display: flex; align-items: center; gap: 18px; height: 64px; padding: 0 24px; }
+  #backbtn { width: 40px; height: 40px; border-radius: 50%; border: 0; background: transparent; cursor: pointer;
+    display: grid; place-items: center; color: var(--mut); transition: background .15s; }
+  #backbtn:hover { background: var(--card2); }
+  #backbtn svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  #search { flex: 1; max-width: 600px; height: 44px; border-radius: 22px; border: 1px solid var(--line);
+    background: var(--card); display: flex; align-items: center; gap: 12px; padding: 0 18px; transition: box-shadow .15s; }
+  #search:focus-within { border-color: var(--blue); box-shadow: 0 0 0 2px color-mix(in srgb, var(--blue) 35%, transparent); }
+  #search svg { width: 18px; height: 18px; stroke: var(--mut); fill: none; stroke-width: 2; stroke-linecap: round; flex: none; }
+  #search input { flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; }
+  #ver { margin-left: auto; color: var(--mut); font-size: 12.5px; white-space: nowrap; }
 
-  /* ô xem trước ảnh nền */
-  #preview { width: 100%; aspect-ratio: 16/8.4; border-radius: 12px; overflow: hidden; background:
-    repeating-conic-gradient(rgba(128,128,128,.08) 0% 25%, transparent 0% 50%) 0 0 / 22px 22px, rgba(128,128,128,.10);
-    display: grid; place-items: center; color: var(--mut); font-size: 13px; }
-  #preview img, #preview video { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .btns { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
-  .btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px; border-radius: 20px;
-    border: 1px solid var(--line); background: var(--glass); color: var(--text); font: 14px inherit; cursor: pointer;
-    transition: border-color .15s, background .15s, transform .1s; }
-  .btn:hover { border-color: var(--a1); }
-  .btn:active { transform: scale(.97); }
-  .btn.primary { background: linear-gradient(135deg, var(--a1), var(--a2)); color: #fff; border-color: transparent; box-shadow: 0 4px 18px color-mix(in srgb, var(--a1) 40%, transparent); }
-  .btn.danger:hover { border-color: #ff6b6b; color: #ff9d9d; }
-  .btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  #prog { display: none; margin-top: 10px; height: 6px; border-radius: 3px; background: var(--glass); overflow: hidden; }
-  #prog.on { display: block; }
-  #prog i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--a1), var(--a2)); transition: width .12s; }
-  #wphint { margin-top: 12px; color: var(--mut); font-size: 12.5px; line-height: 1.5; }
+  /* ===== Khung dưới: sidebar trái + nội dung phải (kiểu Chrome) ===== */
+  #frame { flex: 1; min-height: 0; display: flex; }
+  nav { flex: none; width: 272px; padding: 6px 12px 24px; overflow-y: auto; background: var(--nav); }
+  .nitem { display: flex; align-items: center; gap: 16px; height: 44px; padding: 0 16px; border-radius: 10px;
+    color: var(--mut); cursor: pointer; user-select: none; -webkit-user-select: none; transition: background .12s, color .12s; }
+  .nitem:hover { background: var(--card2); color: var(--text); }
+  .nitem.on { background: color-mix(in srgb, var(--blue) 16%, transparent); color: var(--blue); }
+  .nitem svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .ngap { height: 14px; }
 
-  /* hàng lựa chọn */
-  .row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  #content { flex: 1; min-width: 0; overflow-y: auto; padding: 8px 0 80px; }
+  .page { max-width: 640px; margin: 0 auto; padding: 12px 32px; display: none; animation: fadein .25s ease-out; }
+  .page.on { display: block; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  h1 { font-size: 22px; font-weight: 400; margin: 20px 0 6px; }
+  .lead { color: var(--mut); margin-bottom: 20px; line-height: 1.5; }
+
+  .card { background: var(--card); border-radius: 10px; padding: 6px 20px; margin-bottom: 18px; }
+  @media (prefers-color-scheme: light) { .card { border: 1px solid var(--line); } }
+  .card > h2 { font-size: 15px; font-weight: 500; padding: 14px 0 4px; }
+  .row { display: flex; align-items: center; gap: 18px; padding: 15px 0; border-bottom: 1px solid var(--line); }
   .row:last-child { border-bottom: 0; }
   .row .l { flex: 1; min-width: 0; }
-  .row .l b { font-weight: 600; font-size: 14.5px; }
-  .row .l p { color: var(--mut); font-size: 12.5px; margin-top: 3px; line-height: 1.45; }
+  .row .l b { font-weight: 500; font-size: 14px; }
+  .row .l p { color: var(--mut); font-size: 13px; margin-top: 3px; line-height: 1.5; }
+  .row .l p b { color: var(--text); font-weight: 500; }
 
-  /* công cụ tìm kiếm */
-  .eng { display: flex; flex-wrap: wrap; gap: 8px; }
-  .chip { padding: 8px 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--glass); color: var(--mut); font: 13px inherit; cursor: pointer; transition: color .15s, background .15s, border-color .15s, transform .1s; }
-  .chip:hover { color: var(--text); }
-  .chip:active { transform: scale(.95); }
-  .chip.on { background: linear-gradient(135deg, var(--a1), var(--a2)); color: #fff; border-color: transparent; box-shadow: 0 4px 18px color-mix(in srgb, var(--a1) 40%, transparent); }
+  /* Toggle kiểu Chrome (Material) */
+  .tg { position: relative; width: 40px; height: 15px; border-radius: 8px; background: var(--line);
+    cursor: pointer; flex: none; transition: background .18s; margin: 5px 0; }
+  .tg i { position: absolute; top: -2.5px; left: -1px; width: 20px; height: 20px; border-radius: 50%;
+    background: var(--mut); box-shadow: 0 1px 3px rgba(0,0,0,.4); transition: left .18s, background .18s, transform .18s; }
+  .tg:hover i { transform: scale(1.06); }
+  .tg.on { background: color-mix(in srgb, var(--blue) 55%, transparent); }
+  .tg.on i { left: 19px; background: var(--blue); }
+  @media (prefers-color-scheme: light) { .tg.on i { background: var(--blue); } }
 
-  /* công tắc */
-  .sw { position: relative; width: 46px; height: 26px; border-radius: 13px; background: var(--glass); border: 1px solid var(--line); cursor: pointer; flex: none; transition: background .18s, border-color .18s; }
-  .sw i { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--mut); transition: left .18s, background .18s; }
-  .sw.on { background: linear-gradient(135deg, var(--a1), var(--a2)); border-color: transparent; }
-  .sw.on i { left: 23px; background: #fff; }
+  /* Nút kiểu Chrome */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 20px;
+    border-radius: 18px; border: 1px solid var(--line); background: transparent; color: var(--blue);
+    font: 500 13.5px inherit; cursor: pointer; transition: background .15s, border-color .15s; }
+  .btn:hover { background: color-mix(in srgb, var(--blue) 12%, transparent); border-color: color-mix(in srgb, var(--blue) 45%, transparent); }
+  .btn.fill { background: var(--blue); color: #202124; border-color: transparent; }
+  .btn.fill:hover { filter: brightness(1.08); }
+  .btn.danger { color: var(--danger); }
+  .btn.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
 
-  footer { text-align: center; color: var(--mut); font-size: 12px; margin-top: 8px; }
-  @keyframes in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  /* Ô chọn kiểu Chrome (select) */
+  select { height: 34px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--line);
+    background: var(--card2); color: var(--text); font: inherit; cursor: pointer; outline: none; }
+  select:focus { border-color: var(--blue); }
+
+  /* Chip công cụ tìm kiếm */
+  .eng { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0 14px; }
+  .chip { padding: 8px 18px; border-radius: 999px; border: 1px solid var(--line); background: transparent;
+    color: var(--mut); font: 500 13px inherit; cursor: pointer; transition: all .15s; }
+  .chip:hover { color: var(--text); background: var(--card2); }
+  .chip.on { background: var(--blue); color: #202124; border-color: transparent; font-weight: 600; }
+  @media (prefers-color-scheme: light) { .chip.on { color: #fff; } }
+
+  /* Màu nhấn (accent) — kiểu "Chủ đề màu" của Chrome */
+  .accents { display: flex; flex-wrap: wrap; gap: 14px; padding: 6px 0 14px; }
+  .ac { width: 42px; height: 42px; border-radius: 50%; cursor: pointer; position: relative;
+    border: 2px solid transparent; transition: transform .12s, border-color .15s; }
+  .ac:hover { transform: scale(1.08); }
+  .ac.on { border-color: var(--blue); }
+  .ac.on::after { content: "✓"; position: absolute; inset: 0; display: grid; place-items: center;
+    color: #fff; font-size: 16px; font-weight: 700; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
+  .ac span { display: none; }
+
+  /* Xem trước ảnh nền */
+  #preview { width: 100%; aspect-ratio: 16/8; border-radius: 8px; overflow: hidden; margin-top: 8px;
+    background: repeating-conic-gradient(rgba(128,128,128,.10) 0% 25%, transparent 0% 50%) 0 0 / 22px 22px, var(--card2);
+    display: grid; place-items: center; color: var(--mut); font-size: 13px; }
+  #preview img, #preview video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #prog { display: none; margin-top: 10px; height: 4px; border-radius: 2px; background: var(--card2); overflow: hidden; }
+  #prog.on { display: block; }
+  #prog i { display: block; height: 100%; width: 0%; background: var(--blue); transition: width .12s; }
+
+  /* Khối trang trí cho Game Mode */
+  .gmhero { margin: 18px 0 22px; padding: 22px 24px; border-radius: 14px; color: #fff;
+    background: linear-gradient(120deg, #141e38, #1d1440 55%, #38104a);
+    position: relative; overflow: hidden; }
+  .gmhero::after { content: ""; position: absolute; right: -60px; top: -60px; width: 220px; height: 220px;
+    border-radius: 50%; background: radial-gradient(circle, rgba(138,180,248,.28), transparent 70%); }
+  .gmhero h2 { font-size: 19px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+  .gmhero p { color: rgba(255,255,255,.72); font-size: 13px; line-height: 1.6; margin-top: 8px; max-width: 460px; }
+  .gmhero .btn { margin-top: 16px; background: #8ab4f8; color: #12131a; border: 0; }
+  .gmhero kbd { font: 11px ui-monospace, monospace; padding: 2px 7px; border-radius: 5px;
+    background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.25); }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+    background: rgba(55,214,122,.18); color: #37d67a; border: 1px solid rgba(55,214,122,.4); }
+
+  #noresult { display: none; max-width: 640px; margin: 60px auto; text-align: center; color: var(--mut); }
+  #noresult b { color: var(--text); }
+
+  .mut { color: var(--mut); }
+  code { font: 12px ui-monospace, monospace; padding: 1px 6px; border-radius: 4px; background: var(--card2); }
+
+  @media (max-width: 720px) {
+    nav { display: none; }
+    .page { padding: 12px 18px; }
+    #search { max-width: none; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <a href="#" id="back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Trang chủ</a>
-    <h1>Cài đặt</h1>
-  </header>
 
-  <section>
-    <h2>Ảnh nền trang chủ</h2>
-    <div id="preview"><span>Chưa có ảnh nền</span></div>
-    <input type="file" id="file" accept="image/*,video/*" hidden>
-    <div class="btns">
-      <button class="btn primary" id="pick">
-        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 9"/></svg>Chọn tệp…
-      </button>
-      <button class="btn danger" id="clear">
-        <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>Xoá nền
-      </button>
-    </div>
-    <div id="prog"><i></i></div>
-    <p id="wphint">Hỗ trợ ảnh (.png, .jpg, .gif, .webp, .avif, .bmp) và video động (.mp4, .webm, .mkv, .mov). Ảnh gif và video sẽ chạy động ngay trên trang chủ.</p>
-  </section>
+<div id="top">
+  <button id="backbtn" title="Về trang chủ"><svg viewBox="0 0 24 24"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
+  <div id="search">
+    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+    <input id="q" placeholder="Tìm kiếm trong Cài đặt" spellcheck="false" autocomplete="off">
+  </div>
+  <span id="ver">Aurora</span>
+</div>
 
-  <section>
-    <h2>Công cụ tìm kiếm mặc định</h2>
-    <div class="eng" id="engines"></div>
-    <div class="row" style="margin-top:10px; border:0; padding-bottom:0">
-      <div class="l"><b>Mẹo</b><p>Google hay bị giới hạn tốc độ tra cứu — đổi sang Bing, DuckDuckGo, Brave hay Yandex chỉ với 1 cú bấm. Gõ <b>!g</b>, <b>!ddg</b>, <b>!b</b> trước từ khoá để tìm nhanh từng trang.</p></div>
-    </div>
-  </section>
+<div id="frame">
+  <!-- ===== SIDEBAR kiểu Chrome ===== -->
+  <nav id="nav">
+    <div class="nitem on" data-go="you"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>Bạn và Aurora</div>
+    <div class="nitem" data-go="look"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18c1.3 0 2-.9 2-2s-.7-2-2-2c-1.7 0-3-1.3-3-3s1.3-3 3-3h4"/></svg>Giao diện</div>
+    <div class="nitem" data-go="searcheng"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>Công cụ tìm kiếm</div>
+    <div class="ngap"></div>
+    <div class="nitem" data-go="privacy"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg>Quyền riêng tư và bảo mật</div>
+    <div class="nitem" data-go="perf"><svg viewBox="0 0 24 24"><path d="M4 17a8 8 0 0 1 16 0"/><path d="M12 17l4-6"/><circle cx="12" cy="17" r="1.6"/></svg>Hiệu năng</div>
+    <div class="ngap"></div>
+    <div class="nitem" data-go="game"><svg viewBox="0 0 24 24"><path d="M6 9h12a4 4 0 0 1 4 4l-1 6a2.5 2.5 0 0 1-4.6.8L15 18H9l-1.4 1.8A2.5 2.5 0 0 1 3 19l-1-6a4 4 0 0 1 4-4z"/><path d="M8 13v2M7 14h2M15.5 13.5h.01M17.5 15.5h.01"/></svg>Trò chơi <span class="badge" style="margin-left:auto">MỚI</span></div>
+    <div class="ngap"></div>
+    <div class="nitem" data-go="system"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Hệ thống</div>
+    <div class="nitem" data-go="reset"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>Đặt lại cài đặt</div>
+  </nav>
 
-  <section>
-    <h2>Tương thích &amp; hiệu năng</h2>
-    <div class="row">
-      <div class="l"><b>Đăng nhập Google / Microsoft</b><p>Dùng user-agent "hình Chrome" để Google cho phép đăng nhập trên engine WebKit. Áp dụng cho tab mở từ giờ.</p></div>
-      <div class="sw" id="ua"><i></i></div>
-    </div>
-    <div class="row">
-      <div class="l"><b>Luôn dùng tăng tốc GPU</b><p>Canvas 2D tăng tốc, compositing GPU — trang vẽ mượt hơn, FPS cao hơn. Áp dụng cho tab mở từ giờ.</p></div>
-      <div class="sw" id="gpu"><i></i></div>
-    </div>
-  </section>
+  <!-- ===== NỘI DUNG ===== -->
+  <div id="content">
 
-  <footer>Aurora 0.3 · cookie &amp; đăng nhập được lưu ở thư mục dữ liệu người dùng</footer>
-</main>
+    <!-- Bạn và Aurora -->
+    <section class="page on" id="p-you" data-name="Bạn và Aurora hồ sơ dữ liệu người dùng">
+      <h1>Bạn và Aurora</h1>
+      <p class="lead">Dữ liệu duyệt web của bạn lưu tại máy này.</p>
+      <div class="card">
+        <div class="row">
+          <div class="l"><b>Hồ sơ người dùng</b><p>Dữ liệu web (cookie, đăng nhập, bộ nhớ đệm), bookmark, lịch sử và cấu hình nằm trong thư mục dữ liệu của Aurora.</p></div>
+        </div>
+        <div class="row">
+          <div class="l"><b>Thư mục dữ liệu</b><p class="mut" style="font-family:ui-monospace,monospace;font-size:12px" id="ddir"></p></div>
+          <button class="btn" id="opendir">Mở thư mục</button>
+        </div>
+        <div class="row">
+          <div class="l"><b>Xoá lịch sử duyệt web</b><p>Xoá toàn bộ lịch sử đã lưu (bookmark được giữ lại).</p></div>
+          <button class="btn danger" id="clearhist">Xoá lịch sử</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Giao diện -->
+    <section class="page" id="p-look" data-name="Giao diện màu nhấn chủ đề ảnh nền trang chủ theme">
+      <h1>Giao diện</h1>
+      <p class="lead">Chủ đề màu, ảnh nền trang chủ và nội dung hiển thị khi mở tab mới.</p>
+      <div class="card">
+        <h2>Chủ đề màu</h2>
+        <div class="row">
+          <div class="l"><b>Màu nhấn</b><p>Áp dụng tức thì cho toàn bộ trình duyệt: thanh tab, nút, trang chủ.</p></div>
+        </div>
+        <div class="accents" id="accents"></div>
+      </div>
+      <div class="card">
+        <h2>Ảnh nền trang chủ</h2>
+        <div class="row">
+          <div class="l"><b>Ảnh hoặc video động</b><p>Hỗ trợ .png, .jpg, .gif, .webp, .avif, .bmp và video .mp4, .webm, .mkv, .mov — chạy động ngay trên trang chủ.</p></div>
+        </div>
+        <div id="preview"><span>Chưa có ảnh nền</span></div>
+        <input type="file" id="file" accept="image/*,video/*" hidden>
+        <div style="display:flex;gap:10px;margin:14px 0 16px">
+          <button class="btn fill" id="pick">Chọn tệp…</button>
+          <button class="btn danger" id="clear">Xoá nền</button>
+        </div>
+        <div id="prog"><i></i></div>
+      </div>
+      <div class="card">
+        <h2>Trang chủ</h2>
+        <div class="row">
+          <div class="l"><b>Hiện khu game thủ</b><p>Hiện lối tắt game & webgame (Krunker, Shell Shockers, Steam, Discord, Twitch…) trên trang chủ.</p></div>
+          <div class="tg" id="gamerhome"><i></i></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Công cụ tìm kiếm -->
+    <section class="page" id="p-searcheng" data-name="Công cụ tìm kiếm google bing duckduckgo brave yandex">
+      <h1>Công cụ tìm kiếm</h1>
+      <p class="lead">Dùng trong ô địa chỉ và trang chủ. Google hay bị giới hạn tốc độ? Đổi sang công cụ khác chỉ bằng 1 cú bấm.</p>
+      <div class="card">
+        <div class="eng" id="engines"></div>
+        <div class="row" style="border:0">
+          <div class="l"><b>Tìm nhanh từng trang</b><p>Gõ <b>!g</b> (Google), <b>!ddg</b> (DuckDuckGo), <b>!b</b> (Bing), <b>!yt</b> (YouTube), <b>!st</b> (Steam), <b>!tw</b> (Twitch) trước từ khoá.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Quyền riêng tư và bảo mật -->
+    <section class="page" id="p-privacy" data-name="Quyền riêng tư bảo mật chặn quảng cáo adblock theo dõi">
+      <h1>Quyền riêng tư và bảo mật</h1>
+      <p class="lead">Kiểm soát quảng cáo và dữ liệu duyệt web.</p>
+      <div class="card">
+        <h2>Chặn quảng cáo &amp; theo dõi</h2>
+        <div class="row">
+          <div class="l"><b>Ad Block Lite</b><p>Ẩn quảng cáo và trình theo dõi (DoubleClick, Taboola, Outbrain, Analytics…) ở mức DOM. Áp dụng cho tab mở từ giờ.</p></div>
+          <div class="tg" id="adblock"><i></i></div>
+        </div>
+        <div class="row">
+          <div class="l"><b>Đã chặn trong phiên này</b><p id="blk" class="mut">—</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Hiệu năng -->
+    <section class="page" id="p-perf" data-name="Hiệu năng ram bộ nhớ gpu ngủ tab sleeping tiết kiệm">
+      <h1>Hiệu năng</h1>
+      <p class="lead">Tối ưu RAM và tốc độ render.</p>
+      <div class="card">
+        <h2>GPU</h2>
+        <div class="row">
+          <div class="l"><b>Luôn dùng tăng tốc GPU</b><p>Canvas 2D tăng tốc, compositing GPU — trang vẽ mượt hơn, FPS cao hơn. Áp dụng cho tab mở từ giờ.</p></div>
+          <div class="tg" id="gpu"><i></i></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Ngủ tab (Sleeping Tabs)</h2>
+        <div class="row">
+          <div class="l"><b>Tiết kiệm bộ nhớ</b><p>Tab không dùng sẽ được cho “ngủ” — giải phóng RAM, bấm vào là tỉnh lại ngay. Tab đang ghim không bao giờ ngủ.</p></div>
+          <div class="tg" id="sleeping"><i></i></div>
+        </div>
+        <div class="row">
+          <div class="l"><b>Cho ngủ sau</b><p>Tab không được chạm tới trong thời gian này sẽ ngủ.</p></div>
+          <select id="sleepmin">
+            <option value="5">5 phút</option>
+            <option value="10">10 phút</option>
+            <option value="15">15 phút</option>
+            <option value="20">20 phút</option>
+            <option value="30">30 phút</option>
+            <option value="60">1 giờ</option>
+            <option value="120">2 giờ</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- Trò chơi -->
+    <section class="page" id="p-game" data-name="Trò chơi game mode fps overlay chế độ game game thủ">
+      <h1>Trò chơi</h1>
+      <p class="lead">Bộ tối ưu cho game thủ của Aurora.</p>
+      <div class="gmhero">
+        <h2>🎮 Chế độ Game <span class="badge" id="gmbadge" style="display:none">ĐANG BẬT</span></h2>
+        <p>Nâng ưu tiên tiến trình trình duyệt (nice -10), tắt cuộn mượt để giảm độ trệ chuột → khung hình, giữ GPU luôn bật. Bấm <kbd>F9</kbd> bất cứ lúc nào để bật/tắt ngay.</p>
+        <button class="btn" id="gmnow">Bật ngay Chế độ Game</button>
+      </div>
+      <div class="card">
+        <h2>Chế độ Game</h2>
+        <div class="row">
+          <div class="l"><b>Bật Chế độ Game</b><p>Ưu tiên tiến trình + giảm độ trệ input. Nâng nice cần quyền hệ thống; nếu không được thì vẫn còn các tối ưu còn lại.</p></div>
+          <div class="tg" id="gamemode"><i></i></div>
+        </div>
+        <div class="row">
+          <div class="l"><b>Tự bật khi vào toàn màn hình</b><p>Vào chế độ toàn màn hình (<kbd style="font:11px ui-monospace,monospace;padding:1px 6px;border-radius:4px;background:var(--card2)">F11</kbd>) là tự bật, ra ngoài là tự tắt.</p></div>
+          <div class="tg" id="autogame"><i></i></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Đồng hồ FPS</h2>
+        <div class="row">
+          <div class="l"><b>Hiện FPS overlay</b><p>Đồng hồ FPS nổi ở góc phải (kiểu GeForce Experience), đo bằng requestAnimationFrame — đúng FPS render thật của trang. Xem thêm số FPS nhỏ trên thanh công cụ.</p></div>
+          <div class="tg" id="fpsoverlay"><i></i></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Hệ thống -->
+    <section class="page" id="p-system" data-name="Hệ thống user agent đăng nhập google microsoft safe renderer">
+      <h1>Hệ thống</h1>
+      <p class="lead">Tương thích, phát hành và đường dẫn dữ liệu.</p>
+      <div class="card">
+        <h2>Tương thích đăng nhập</h2>
+        <div class="row">
+          <div class="l"><b>Đăng nhập Google / Microsoft</b><p>Dùng user-agent “hình Chrome” để Google cho phép đăng nhập trên engine WebKit. Áp dụng cho tab mở từ giờ.</p></div>
+          <div class="tg" id="ua"><i></i></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Đồ hoạ lỗi / màn hình đen?</h2>
+        <div class="row">
+          <div class="l"><b>Chế độ render an toàn</b><p>Nếu GPU vẽ lỗi (màn hình đen, khung trắng), chạy: <code>AURORA_SAFE_RENDERER=1 aurora</code> — tắt DMA-BUF renderer của WebKit.</p></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Thông tin phiên bản</h2>
+        <div class="row">
+          <div class="l"><b>Phiên bản</b><p id="verline" class="mut">Aurora</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Đặt lại -->
+    <section class="page" id="p-reset" data-name="Đặt lại cài đặt mặc định khôi phục">
+      <h1>Đặt lại cài đặt</h1>
+      <p class="lead">Trả mọi cài đặt về giá trị mặc định của Aurora.</p>
+      <div class="card">
+        <div class="row">
+          <div class="l"><b>Khôi phục cài đặt về mặc định</b><p>Đặt lại công cụ tìm kiếm, chủ đề màu, Game Mode, chặn quảng cáo, ngủ tab… (giữ nguyên ảnh nền và dữ liệu web như đăng nhập, bookmark).</p></div>
+          <button class="btn danger" id="resetbtn">Đặt lại cài đặt</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="noresult">Không tìm thấy nội dung nào cho “<b id="qt"></b>”<br><br>Thử từ khoá khác: <i>game, fps, quảng cáo, nền, tìm kiếm…</i></div>
+  </div>
+</div>
 
 <script>
   const CFG = /*CFG*/null;
   const send = (m) => { try { window.ipc.postMessage(m); } catch (e) {} };
   const $ = (s) => document.querySelector(s);
+  const $$ = (s) => [...document.querySelectorAll(s)];
 
-  $('#back').onclick = (e) => { e.preventDefault(); location.href = CFG.home; };
+  /* ===== accent ===== */
+  { const r = document.documentElement.style;
+    const a = (CFG.accents || []).find(x => x.id === CFG.accent) || CFG.accents[0];
+    if (a) { r.setProperty('--blue', a.c1); r.setProperty('--blue2', a.c2); } }
 
-  /* ---------- ảnh nền ---------- */
+  $('#ver').firstChild.textContent = 'Aurora ' + CFG.version;
+  $('#verline').textContent = 'Aurora ' + CFG.version + ' · trình duyệt Rust (tao + wry) · bản "siêu bá vương cho game thủ"';
+  $('#ddir').textContent = CFG.dataDir || '—';
+  $('#backbtn').onclick = () => { location.href = CFG.home; };
+
+  /* ===== điều hướng section (kiểu Chrome) ===== */
+  function go(id) {
+    $$('.page').forEach(p => p.classList.toggle('on', p.id === 'p-' + id));
+    $$('.nitem').forEach(n => n.classList.toggle('on', n.dataset.go === id));
+    $('#content').scrollTop = 0;
+    $('#noresult').style.display = 'none';
+  }
+  $$('.nitem').forEach(n => n.onclick = () => { $('#q').value = ''; go(n.dataset.go); });
+
+  /* ===== tìm kiếm cài đặt (kiểu Chrome) ===== */
+  let tsearch;
+  $('#q').addEventListener('input', () => {
+    clearTimeout(tsearch);
+    tsearch = setTimeout(() => {
+      const q = $('#q').value.trim().toLowerCase();
+      if (!q) { go('you'); $$('.page').forEach(p => { p.style.display = ''; p.classList.remove('on'); }); go('you'); return; }
+      let any = false;
+      $$('.page').forEach(p => {
+        const hit = p.dataset.name.toLowerCase().includes(q) ||
+                    [...p.querySelectorAll('.row,.card')].some(el => el.textContent.toLowerCase().includes(q));
+        p.style.display = hit ? 'block' : 'none';
+        p.classList.add('on');
+        if (hit) any = true;
+      });
+      $('#noresult').style.display = any ? 'none' : 'block';
+      $('#qt').textContent = $('#q').value;
+    }, 120);
+  });
+
+  /* ===== công tắc kiểu Chrome ===== */
+  function sw(id, on, msg) {
+    const el = $('#' + id);
+    el.classList.toggle('on', !!on);
+    el.onclick = () => {
+      const v = !el.classList.contains('on');
+      el.classList.toggle('on', v);
+      send(msg + '|' + (v ? '1' : '0'));
+      if (msg === 'setgamemode') syncGM(v);
+    };
+  }
+  function syncGM(on) {
+    $('#gmbadge').style.display = on ? '' : 'none';
+    $('#gmnow').textContent = on ? 'Tắt Chế độ Game' : 'Bật ngay Chế độ Game';
+  }
+
+  /* ===== Bạn và Aurora ===== */
+  $('#opendir').onclick = () => send('opendatadir|');
+  $('#clearhist').onclick = () => { send('act|clearhistory'); };
+
+  /* ===== Giao diện: accent ===== */
+  function drawAccents() {
+    const box = $('#accents'); box.replaceChildren();
+    for (const a of CFG.accents) {
+      const b = document.createElement('button');
+      b.className = 'ac' + (a.id === CFG.accent ? ' on' : '');
+      b.title = a.name;
+      b.style.background = 'linear-gradient(135deg, ' + a.c1 + ', ' + a.c2 + ')';
+      b.onclick = () => {
+        CFG.accent = a.id;
+        $$('.ac').forEach(x => x.classList.remove('on'));
+        b.classList.add('on');
+        const r = document.documentElement.style;
+        r.setProperty('--blue', a.c1); r.setProperty('--blue2', a.c2);
+        send('setaccent|' + a.id);
+      };
+      box.appendChild(b);
+    }
+  }
+  drawAccents();
+
+  /* ===== Giao diện: ảnh nền ===== */
   function drawPreview() {
     const p = $('#preview');
     p.replaceChildren();
@@ -142,7 +470,6 @@
   }
   drawPreview();
 
-  /* Linux: hộp thoại hệ thống qua IPC. Windows/macOS: input file + đẩy theo phần. */
   if (CFG.nativePicker) {
     $('#pick').onclick = () => send('pickwallpaper|');
   } else {
@@ -176,7 +503,7 @@
     setTimeout(() => bar.classList.remove('on'), 600);
   }
 
-  /* ---------- công cụ tìm kiếm ---------- */
+  /* ===== Công cụ tìm kiếm ===== */
   function drawEngines() {
     const box = $('#engines'); box.replaceChildren();
     for (const e of CFG.engines) {
@@ -192,18 +519,40 @@
   }
   drawEngines();
 
-  /* ---------- công tắc ---------- */
-  function sw(id, on, msg) {
-    const el = $('#' + id);
-    el.classList.toggle('on', !!on);
-    el.onclick = () => {
-      const v = !el.classList.contains('on');
-      el.classList.toggle('on', v);
-      send(msg + '|' + (v ? '1' : '0'));
-    };
+  /* ===== Bảo mật ===== */
+  $('#blk').textContent = CFG.blocked > 0 ? ('🛡 ' + CFG.blocked + ' quảng cáo / trình theo dõi đã bị chặn') : 'Chưa chặn được phần tử nào trong phiên này';
+
+  /* ===== Hiệu năng ===== */
+  function drawSleepMin() {
+    const s = $('#sleepmin');
+    let v = String(CFG.sleepMin || 20);
+    if (![...s.options].some(o => o.value === v)) v = '20';
+    s.value = v;
+    s.onchange = () => send('setsleepmin|' + s.value);
   }
+  drawSleepMin();
+
+  /* ===== Trò chơi ===== */
+  sw('gamemode', CFG.gameMode, 'setgamemode');
+  sw('autogame', CFG.autoGame, 'setautogame');
+  sw('fpsoverlay', CFG.fpsOverlay, 'setfps');
+  sw('gamerhome', CFG.gamerHome, 'setgamerhome');
+  syncGM(CFG.gameMode);
+  $('#gmnow').onclick = () => {
+    const on = !$('#gamemode').classList.contains('on');
+    $('#gamemode').classList.toggle('on', on);
+    syncGM(on);
+    send('setgamemode|' + (on ? '1' : '0'));
+  };
+
+  /* ===== Hệ thống + đặt lại ===== */
   sw('ua', CFG.ua, 'setua');
   sw('gpu', CFG.gpu, 'setgpu');
+  sw('adblock', CFG.adblock, 'setadblock');
+  sw('sleeping', CFG.sleeping, 'setsleep');
+  $('#resetbtn').onclick = () => {
+    if (confirm('Đặt lại mọi cài đặt của Aurora về mặc định?')) send('resetsettings|');
+  };
 </script>
 </body>
 </html>

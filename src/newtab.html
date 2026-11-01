@@ -47,6 +47,16 @@
   .tip { margin-top: 28px; color: var(--mut); font-size: 12.5px; }
   .tip kbd { font: 11.5px ui-monospace, monospace; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--line); background: var(--glass); }
 
+  /* ---------- khu game thủ ---------- */
+  #gz { margin-top: 30px; }
+  #gz h3 { font-size: 13px; font-weight: 600; letter-spacing: .5px; color: var(--mut); margin-bottom: 12px;
+    display: flex; align-items: center; justify-content: center; gap: 8px; }
+  #gz h3::before, #gz h3::after { content: ""; width: 46px; height: 1px; background: var(--line); }
+  #gz .tiles { margin-top: 0; gap: 10px; }
+  #gz .tile .i { background: linear-gradient(135deg, #37d67a, #38c6ff); box-shadow: 0 4px 18px rgba(55,214,122,.28); }
+  #gz .tile:hover .i { transform: scale(1.06); }
+  #gz .tile .i { transition: transform .15s; }
+
   /* ---------- nút góc dưới ---------- */
   #corner { position: fixed; right: 18px; bottom: 16px; display: flex; gap: 8px; z-index: 5; }
   .cbtn { display: flex; align-items: center; gap: 7px; height: 36px; padding: 0 15px; border-radius: 18px;
@@ -67,7 +77,11 @@
   <form id="f"><input id="q" autofocus autocomplete="off" spellcheck="false" placeholder="Tìm kiếm hoặc nhập địa chỉ web"></form>
   <div class="engines" id="engines"></div>
   <div class="tiles" id="tiles"></div>
-  <div class="tip"><kbd>Ctrl</kbd> <kbd>K</kbd> thanh địa chỉ · gõ <kbd>&gt;</kbd> xem lệnh · <kbd>!g</kbd> <kbd>!yt</kbd> <kbd>!gh</kbd> tìm nhanh</div>
+  <div id="gz">
+    <h3>🎮 Khu game thủ</h3>
+    <div class="tiles" id="games"></div>
+  </div>
+  <div class="tip"><kbd>Ctrl</kbd> <kbd>K</kbd> thanh địa chỉ · gõ <kbd>&gt;</kbd> xem lệnh · <kbd>!g</kbd> <kbd>!yt</kbd> <kbd>!st</kbd> tìm nhanh · <kbd>F9</kbd> Chế độ Game</div>
 </main>
 <div id="corner">
   <button class="cbtn" id="wall" title="Đổi ảnh nền (png, jpg, gif, webp, mp4, webm…)">
@@ -82,6 +96,23 @@
   const CFG = /*CFG*/null;
   const send = (m) => { try { window.ipc.postMessage(m); } catch (e) {} };
   const $ = (s) => document.querySelector(s);
+
+  /* ---------- màu nhấn ---------- */
+  if (CFG.accent) {
+    const r = document.documentElement.style;
+    r.setProperty('--a1', CFG.accent.c1);
+    r.setProperty('--a2', CFG.accent.c2);
+  }
+
+  /* ---------- khu game thủ ---------- */
+  if (!CFG.gamerHome) { $('#gz').style.display = 'none'; }
+  else if (CFG.games) {
+    const g = $('#games');
+    g.replaceChildren();
+    for (const gm of CFG.games) {
+      try { g.appendChild(tile(gm.t, gm.u)); } catch (e) {}
+    }
+  }
 
   /* ---------- nền ---------- */
   function applyWallpaper() {

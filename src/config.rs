@@ -1,6 +1,9 @@
-//! Cấu hình người dùng: công cụ tìm kiếm, ảnh nền, tương thích đăng nhập, tăng tốc GPU.
+//! Cấu hình người dùng: công cụ tìm kiếm, ảnh nền, tương thích đăng nhập,
+//! tăng tốc GPU và khoá cài đặt cho game thủ (Game Mode, FPS overlay,
+//! chặn quảng cáo, ngủ tab, màu nhấn giao diện).
 //!
 //! Lưu dạng JSON (`config.json`) cùng thư mục dữ liệu với bookmark/lich sử.
+//! Các trường mới đều có `#[serde(default)]` nên config.json cũ vẫn nạp được.
 
 use crate::store;
 use serde::{Deserialize, Serialize};
@@ -25,6 +28,28 @@ pub const ENGINES: &[Engine] = &[
 
 pub fn engine_of(id: &str) -> &'static Engine {
     ENGINES.iter().find(|e| e.id == id).unwrap_or(&ENGINES[0])
+}
+
+/// Màu nhấn giao diện (kiểu "Choose a theme color" của Chrome).
+/// (id, tên hiển thị, màu 1, màu 2 của gradient)
+pub struct Accent {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub c1: &'static str,
+    pub c2: &'static str,
+}
+
+pub const ACCENTS: &[Accent] = &[
+    Accent { id: "violet", name: "Tím Aurora", c1: "#8b7bff", c2: "#5eb8ff" },
+    Accent { id: "blue", name: "Xanh Dương", c1: "#5b8cff", c2: "#38c6ff" },
+    Accent { id: "green", name: "Xanh Lục", c1: "#37d67a", c2: "#2fd4b0" },
+    Accent { id: "rose", name: "Hồng Neon", c1: "#ff5c8a", c2: "#ff8f6b" },
+    Accent { id: "amber", name: "Cam Lửa", c1: "#ffb84d", c2: "#ff7a45" },
+    Accent { id: "gaming", name: "RGB Game Thủ", c1: "#a3ff12", c2: "#12fff7" },
+];
+
+pub fn accent_of(id: &str) -> &'static Accent {
+    ACCENTS.iter().find(|a| a.id == id).unwrap_or(&ACCENTS[0])
 }
 
 /// User-agent "hình Chrome".
@@ -79,10 +104,42 @@ pub struct Config {
     /// Đường dẫn tuyệt đối tới tệp ảnh/video nền (png, jpg, gif, webp, mp4, webm…).
     #[serde(default)]
     pub wallpaper: Option<String>,
+    /// id màu nhấn giao diện (xem `ACCENTS`).
+    #[serde(default = "default_accent")]
+    pub accent: String,
+    /// Hiện khu game trên trang chủ (tiles game/webgame cho game thủ).
+    #[serde(default = "default_true")]
+    pub gamer_home: bool,
+    /// Chặn quảng cáo & theo dõi (Ad Block Lite, chặn ở mức DOM).
+    #[serde(default = "default_true")]
+    pub adblock: bool,
+    /// Ngủ tab không dùng để tiết kiệm RAM (Sleeping Tabs).
+    #[serde(default = "default_true")]
+    pub sleeping_tabs: bool,
+    /// Số phút không dùng thì cho tab ngủ.
+    #[serde(default = "default_sleep_min")]
+    pub sleep_after_min: u32,
+    /// Game Mode: nâng ưu tiên tiến trình, tắt cuộn mượt để giảm độ trễ.
+    #[serde(default)]
+    pub game_mode: bool,
+    /// Tự động bật Game Mode khi vào toàn màn hình (F11/video fullscreen).
+    #[serde(default = "default_true")]
+    pub auto_game_mode: bool,
+    /// Bật đồng hồ FPS nổi (FPS overlay kiểu GeForce Experience).
+    #[serde(default)]
+    pub fps_overlay: bool,
 }
 
 fn default_engine() -> String {
     "google".to_string()
+}
+
+fn default_accent() -> String {
+    "violet".to_string()
+}
+
+fn default_sleep_min() -> u32 {
+    20
 }
 
 fn default_true() -> bool {
@@ -96,6 +153,14 @@ impl Default for Config {
             ua_compat: true,
             gpu_always: true,
             wallpaper: None,
+            accent: default_accent(),
+            gamer_home: true,
+            adblock: true,
+            sleeping_tabs: true,
+            sleep_after_min: default_sleep_min(),
+            game_mode: false,
+            auto_game_mode: true,
+            fps_overlay: false,
         }
     }
 }

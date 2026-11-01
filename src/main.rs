@@ -18,6 +18,16 @@
 //!   - Đổi công cụ tìm kiếm ngay trên trang chủ (Google / Bing / DuckDuckGo /
 //!     Brave / Yandex) — hữu ích khi Google bị giới hạn.
 //!   - Tăng tốc: luôn dùng GPU, canvas 2D tăng tốc, cuộn mượt, WebRTC + media.
+//!
+//! Aurora 0.4 — “siêu bá vương cho game thủ”:
+//!   - Cài đặt mới kiểu Google Chrome: điều hướng trái, ô “Tìm kiếm cài đặt”,
+//!     đổi màu nhấn giao diện, đặt lại cài đặt về mặc định.
+//!   - Game Mode (F9): nâng ưu tiên tiến trình, tắt cuộn mượt để giảm độ trễ,
+//!     tự bật khi vào toàn màn hình (F11).
+//!   - Đồng hồ FPS nổi (kiểu GeForce) đo bằng requestAnimationFrame.
+//!   - Ad Block Lite: ẩn quảng cáo & theo dõi ở mức DOM, đếm số đã chặn.
+//!   - Sleeping Tabs: tab không dùng lâu được cho “ngủ” để tiết kiệm RAM.
+//!   - Trang chủ có khu game thủ; thanh bên hiển thị RAM & số quảng cáo đã chặn.
 
 mod config;
 mod store;
@@ -31,7 +41,7 @@ use tao::{
     dpi::LogicalSize as TaoSize,
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy},
-    window::{Window, WindowBuilder},
+    window::{Fullscreen, Window, WindowBuilder},
 };
 use wry::{
     dpi::{LogicalPosition, LogicalSize},
@@ -51,10 +61,30 @@ use std::sync::OnceLock;
 /// Cổng của máy chủ HTTP ảnh/video nền (Linux).
 static WALL_PORT: OnceLock<Option<u16>> = OnceLock::new();
 
+/// Số quảng cáo đã chặn trong phiên (hiện trên thanh bên & trang Cài đặt).
+static BLOCKED: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Phím tắt trang web/game cho game thủ hiển thị trên trang chủ.
+const GAMES: &[(&str, &str)] = &[
+    ("Krunker", "https://krunker.io"),
+    ("Shell Shockers", "https://shellshock.io"),
+    ("Slither.io", "https://slither.io"),
+    ("2048", "https://play2048.co"),
+    ("Chess.com", "https://www.chess.com"),
+    ("Poki", "https://www.poki.com"),
+    ("CrazyGames", "https://www.crazygames.com"),
+    ("Steam", "https://store.steampowered.com"),
+    ("Epic Games", "https://store.epicgames.com"),
+    ("Discord", "https://discord.com/app"),
+    ("Twitch", "https://www.twitch.tv"),
+];
+
 const KEYS: &str = include_str!("keys.js");
 const PAGE: &str = include_str!("page.js");
 const NEWTAB_HTML: &str = include_str!("newtab.html");
 const SETTINGS_HTML: &str = include_str!("settings.html");
+const ADBLOCK_JS: &str = include_str!("adblock.js");
+const HUD_HTML: &str = include_str!("hud.html");
 
 const TOP_H: f64 = 52.0;
 const SIDEBAR_W: f64 = 248.0;
@@ -91,6 +121,10 @@ const COMMANDS: &[(&str, &str, &str)] = &[
     ("settings", "Cài đặt (ảnh nền, tìm kiếm…)", ""),
     ("wallpaper", "Đổi ảnh nền", ""),
     ("clearhistory", "Xoá lịch sử duyệt web", ""),
+    ("gamemode", "Bật / tắt Chế độ Game", "F9"),
+    ("fullscreen", "Toàn màn hình", "F11"),
+    ("fpsoverlay", "Bật / tắt đồng hồ FPS", ""),
+    ("resetsettings", "Đặt lại cài đặt về mặc định", ""),
 ];
 
 /// Bang kiểu Min / DuckDuckGo: `!yt rust` => tìm thẳng trên YouTube.
@@ -104,10 +138,17 @@ const BANGS: &[(&str, &str)] = &[
     ("so", "https://stackoverflow.com/search?q="),
     ("crates", "https://crates.io/search?q="),
     ("docs", "https://docs.rs/releases/search?query="),
+    ("st", "https://store.steampowered.com/search/?term="),
+    ("tw", "https://www.twitch.tv/search?term="),
 ];
 
-fn page_script() -> String {
-    format!("{}\n{}", KEYS, PAGE)
+fn page_script(c: &config::Config) -> String {
+    let mut s = format!("{}\n{}", KEYS, PAGE);
+    if c.adblock {
+        s.push('\n');
+        s.push_str(ADBLOCK_JS);
+    }
+    s
 }
 fn chrome_html() -> String {
     include_str!("ui.html").replace("/*KEYS*/", KEYS)
@@ -130,6 +171,8 @@ enum UserEvent {
     Tab(u32, TabMsg),
     /// Người dùng vừa chọn tệp ảnh nền từ hộp thoại hệ thống.
     Wallpaper(Option<String>),
+    /// Đồng hồ định kỳ (5 giây): ngủ tab + cập nhật RAM/quảng cáo đã chặn.
+    StatsTick,
 }
 
 // ---------------------------------------------------------------------------
@@ -153,6 +196,38 @@ fn urlencode(s: &str) -> String {
         }
     }
     out
+}
+
+fn urldecode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'+' => {
+                out.push(b' ');
+                i += 1;
+            }
+            b'%' if i + 2 < b.len() => {
+                let hex = std::str::from_utf8(&b[i + 1..i + 3]).unwrap_or("");
+                match u8::from_str_radix(hex, 16) {
+                    Ok(v) => {
+                        out.push(v);
+                        i += 3;
+                    }
+                    Err(_) => {
+                        out.push(b[i]);
+                        i += 1;
+                    }
+                }
+            }
+            v => {
+                out.push(v);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// Trả về (url, là_tìm_kiếm). `search` là URL của công cụ tìm kiếm đang chọn.
@@ -228,6 +303,12 @@ fn serve_internal(c: &config::Config, uri: &wry::http::Uri, port: Option<u16>) -
     match route.as_str() {
 "newtab" => internal_response(200, "text/html; charset=utf-8", render_newtab(c, port).into_bytes()),
         "settings" => internal_response(200, "text/html; charset=utf-8", render_settings(c, port).into_bytes()),
+        "sleep" => {
+            // Tab ngủ: `aurora://local/sleep?url=<url gốc>`
+            let q = uri.query().unwrap_or("");
+            let url = q.strip_prefix("url=").map(urldecode).unwrap_or_default();
+            internal_response(200, "text/html; charset=utf-8", render_sleep(c, &url).into_bytes())
+        }
         "wallpaper" => {
             let path = c.wallpaper.as_deref().unwrap_or("");
             match (config::wallpaper_mime(path), std::fs::read(path)) {
@@ -285,6 +366,8 @@ fn engines_json() -> serde_json::Value {
 fn render_newtab(c: &config::Config, port: Option<u16>) -> String {
     let engine = config::engine_of(&c.engine);
     let (wp, mime) = wallpaper_info(c, port);
+    let a = config::accent_of(&c.accent);
+    let games: Vec<_> = GAMES.iter().map(|g| json!({ "t": g.0, "u": g.1 })).collect();
     let cfg = json!({
         "base": INTERNAL_BASE,
         "wallpaper": wp,
@@ -293,6 +376,9 @@ fn render_newtab(c: &config::Config, port: Option<u16>) -> String {
         "engines": engines_json(),
         "settings": internal_url("settings"),
         "nativePicker": cfg!(not(any(target_os = "windows", target_os = "macos"))),
+        "accent": { "c1": a.c1, "c2": a.c2 },
+        "gamerHome": c.gamer_home,
+        "games": games,
     });
     NEWTAB_HTML.replace("/*CFG*/null", &cfg.to_string())
 }
@@ -300,6 +386,10 @@ fn render_newtab(c: &config::Config, port: Option<u16>) -> String {
 fn render_settings(c: &config::Config, port: Option<u16>) -> String {
     let engine = config::engine_of(&c.engine);
     let (wp, mime) = wallpaper_info(c, port);
+    let accents: Vec<_> = config::ACCENTS
+        .iter()
+        .map(|a| json!({ "id": a.id, "name": a.name, "c1": a.c1, "c2": a.c2 }))
+        .collect();
     let cfg = json!({
         "base": INTERNAL_BASE,
         "wallpaper": wp,
@@ -310,8 +400,58 @@ fn render_settings(c: &config::Config, port: Option<u16>) -> String {
         "gpu": c.gpu_always,
         "home": internal_url("newtab"),
         "nativePicker": cfg!(not(any(target_os = "windows", target_os = "macos"))),
+        "accent": c.accent,
+        "accents": accents,
+        "gameMode": c.game_mode,
+        "autoGame": c.auto_game_mode,
+        "fpsOverlay": c.fps_overlay,
+        "adblock": c.adblock,
+        "blocked": BLOCKED.load(std::sync::atomic::Ordering::Relaxed),
+        "sleeping": c.sleeping_tabs,
+        "sleepMin": c.sleep_after_min,
+        "gamerHome": c.gamer_home,
+        "dataDir": store::dir().to_string_lossy(),
+        "version": env!("CARGO_PKG_VERSION"),
     });
     SETTINGS_HTML.replace("/*CFG*/null", &cfg.to_string())
+}
+
+/// Trang “tab đang ngủ” (Sleeping Tabs): siêu nhẹ, thay trang gốc để giải phóng RAM.
+fn render_sleep(c: &config::Config, url: &str) -> String {
+    let a = config::accent_of(&c.accent);
+    let q = serde_json::to_string(url).unwrap_or_else(|_| "\"\"".into());
+    format!(
+        r#"<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Tab đang ngủ</title>
+<style>
+* {{ margin: 0; padding: 0; }}
+html, body {{ height: 100%; }}
+body {{ display: grid; place-items: center; background: #101118; color: #eef0ff;
+  font: 15px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }}
+.card {{ text-align: center; animation: in .4s ease-out; }}
+.z {{ font-size: 64px; line-height: 1; filter: drop-shadow(0 6px 24px rgba(0,0,0,.5)); }}
+h1 {{ margin: 18px 0 8px; font-size: 22px; font-weight: 650; }}
+p {{ color: rgba(238,240,255,.55); max-width: 420px; margin: 0 auto; line-height: 1.55; }}
+button {{ margin-top: 26px; height: 44px; padding: 0 26px; border: 0; border-radius: 22px; cursor: pointer;
+  color: #fff; font: 600 14.5px inherit;
+  background: linear-gradient(135deg, {c1}, {c2});
+  box-shadow: 0 6px 24px color-mix(in srgb, {c1} 40%, transparent); }}
+button:active {{ transform: scale(.97); }}
+@keyframes in {{ from {{ opacity: 0; transform: translateY(10px); }} to {{ opacity: 1; transform: none; }} }}
+</style></head><body onclick="wake()">
+<div class="card">
+  <div class="z">😴</div>
+  <h1>Tab đang ngủ</h1>
+  <p>Tab này lâu không dùng nên đã được cho ngủ để tiết kiệm RAM. Bấm bất cứ đâu để đánh thức.</p>
+  <button onclick="event.stopPropagation();wake()">Đánh thức tab</button>
+</div>
+<script>
+function wake() {{ location.href = {q}; }}
+</script>
+</body></html>"#,
+        c1 = a.c1,
+        c2 = a.c2,
+        q = q,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -349,7 +489,8 @@ fn tune_webview(wv: &WebView, c: &config::Config) {
     let wk = wv.webview();
     if let Some(s) = wk.settings() {
         // (canvas 2D tăng tốc là mặc định từ WebKit 2.32)
-        s.set_enable_smooth_scrolling(true);
+        // Game Mode: tắt cuộn mượt để giảm độ trễ chuột -> trang (input latency).
+        s.set_enable_smooth_scrolling(!c.game_mode);
         s.set_enable_media_stream(true);
         s.set_enable_webrtc(true);
         if c.gpu_always {
@@ -360,6 +501,42 @@ fn tune_webview(wv: &WebView, c: &config::Config) {
 
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 fn tune_webview(_wv: &WebView, _c: &config::Config) {}
+
+/// Game Mode: nâng ưu tiên tiến trình của Aurora (Linux: nice -10).
+/// Cần quyền (CAP_SYS_NICE); nếu bị từ chối thì bỏ qua âm thầm — vẫn còn
+/// các tối ưu khác (tắt cuộn mượt, GPU luôn bật).
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn set_priority_boost(on: bool) {
+    unsafe {
+        let prio: i32 = if on { -10 } else { 0 };
+        libc::setpriority(libc::PRIO_PROCESS, 0, prio);
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+fn set_priority_boost(_on: bool) {
+    // Windows/macOS: để sau (cần API riêng của từng nền tảng).
+}
+
+/// RAM hệ thống đang dùng (%) — đọc /proc/meminfo (Linux).
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn mem_used_pct() -> Option<u32> {
+    let s = std::fs::read_to_string("/proc/meminfo").ok()?;
+    let mut total: Option<u64> = None;
+    let mut avail: Option<u64> = None;
+    for line in s.lines() {
+        if let Some(v) = line.strip_prefix("MemTotal:") {
+            total = v.trim().split(' ').next().and_then(|x| x.parse().ok());
+        } else if let Some(v) = line.strip_prefix("MemAvailable:") {
+            avail = v.trim().split(' ').next().and_then(|x| x.parse().ok());
+        }
+    }
+    let (t, a) = (total?, avail?);
+    if t == 0 {
+        return None;
+    }
+    Some(((t.saturating_sub(a)) * 100 / t) as u32)
+}
 
 /// Tệp tải về lưu vào ~/Downloads, tự đổi tên khi trùng.
 fn unique_download_path(mut p: std::path::PathBuf) -> std::path::PathBuf {
@@ -392,6 +569,16 @@ fn make_overlay(host: &Host, ctx: &mut WebContext, proxy: &EventLoopProxy<UserEv
     )
 }
 
+/// Đồng hồ FPS nổi (không cần IPC, Rust đẩy số liệu bằng evaluate_script).
+fn make_hud(host: &Host, ctx: &mut WebContext) -> WebView {
+    host.attach(
+        WebViewBuilder::with_web_context(ctx)
+            .with_transparent(true)
+            .with_html(HUD_HTML),
+        rect(0.0, 0.0, 126.0, 58.0),
+    )
+}
+
 // ---------------------------------------------------------------------------
 // Trạng thái
 // ---------------------------------------------------------------------------
@@ -407,6 +594,10 @@ struct Tab {
     zoom: f64,
     /// Tab khôi phục từ phiên cũ: chỉ nạp khi người dùng chuyển tới.
     pending: Option<String>,
+    /// Sleeping Tabs: tab đang “ngủ” (lưu url gốc, đánh thức khi chuyển tới).
+    parked: Option<String>,
+    /// Lần cuối tab được dùng (để quyết định cho ngủ).
+    last_active: std::time::Instant,
 }
 
 #[derive(Clone)]
@@ -447,6 +638,12 @@ struct App {
     web_context: WebContext,
     /// Đang nhận tệp ảnh nền đẩy từ trang cài đặt (Windows/macOS).
     wp_out: Option<(std::fs::File, String)>,
+    /// Đồng hồ FPS nổi (FPS overlay) đè lên góc phải vùng nội dung.
+    fps_hud: WebView,
+    /// FPS mới nhất của tab đang dùng (page.js đo bằng requestAnimationFrame).
+    last_fps: u32,
+    /// Game Mode vừa được bật tự động bởi chế độ toàn màn hình.
+    game_auto: bool,
 }
 
 impl App {
@@ -480,6 +677,7 @@ impl App {
             let _ = t.webview.set_bounds(rect(sw, TOP_H, cw, ch));
         }
         self.place_overlay();
+        self.place_hud();
         let _ = self.chrome.evaluate_script(&format!(
             "window.__layout&&window.__layout({},{},{})",
             sw,
@@ -512,6 +710,16 @@ impl App {
                 let _ = self.overlay.set_visible(true);
             }
         }
+    }
+
+    /// Đồng hồ FPS nằm ở góc phải trên vùng nội dung, đè lên trang web.
+    fn place_hud(&self) {
+        let (w, _h) = self.win_size();
+        let sw = self.sidebar_w();
+        let cw = (w - sw).max(1.0);
+        let _ = self
+            .fps_hud
+            .set_bounds(rect(sw + cw - 140.0, TOP_H + 10.0, 126.0, 58.0));
     }
 
     // ----- truy cập nhanh -------------------------------------------------
@@ -568,9 +776,15 @@ impl App {
             .map(|b| json!({ "title": b.title, "url": b.url }))
             .collect();
         let cur = self.active_tab().map(|t| t.url.clone()).unwrap_or_default();
+        let (gm, ad) = {
+            let c = self.config.lock().unwrap();
+            (c.game_mode, c.adblock)
+        };
         let state = json!({
             "tabs": tabs, "active": self.active, "bms": bms,
-            "bm": self.store.is_bookmarked(&cur), "collapsed": self.collapsed
+            "bm": self.store.is_bookmarked(&cur), "collapsed": self.collapsed,
+            "gm": gm, "ad": ad,
+            "blocked": BLOCKED.load(std::sync::atomic::Ordering::Relaxed)
         });
         let _ = self.chrome.evaluate_script(&format!("window.__state({state})"));
     }
@@ -604,8 +818,8 @@ impl App {
         let sw = self.sidebar_w();
 
         let (p_title, p_load, p_ipc) = (self.proxy.clone(), self.proxy.clone(), self.proxy.clone());
-        let script = page_script();
         let cfg = self.config.lock().unwrap().clone();
+        let script = page_script(&cfg);
         let scheme_cfg = self.config.clone();
         let scheme_port = WALL_PORT.get().copied().flatten();
 
@@ -660,6 +874,8 @@ impl App {
             pinned,
             zoom: 1.0,
             pending,
+            parked: None,
+            last_active: std::time::Instant::now(),
         });
         self.tabs.sort_by_key(|t| !t.pinned);
         if activate {
@@ -678,6 +894,11 @@ impl App {
 
     fn rebuild_overlay(&mut self) {
         self.overlay = make_overlay(&self.host, &mut self.web_context, &self.proxy);
+        // HUD dựng sau cùng để luôn nằm trên các webview tab.
+        self.fps_hud = make_hud(&self.host, &mut self.web_context);
+        let on = self.config.lock().map(|c| c.fps_overlay).unwrap_or(false);
+        let _ = self.fps_hud.set_visible(on);
+        self.place_hud();
         self.mode = Mode::Hidden;
     }
 
@@ -685,10 +906,18 @@ impl App {
         let Some(idx) = self.tabs.iter().position(|t| t.id == id) else { return };
         self.hide_overlay();
         self.active = id;
+        self.tabs[idx].last_active = std::time::Instant::now();
         if let Some(u) = self.tabs[idx].pending.take() {
             self.tabs[idx].loading = true;
             let _ = self.tabs[idx].webview.load_url(&u);
         }
+        // Sleeping Tabs: đánh thức tab đang ngủ.
+        if let Some(real) = self.tabs[idx].parked.take() {
+            self.tabs[idx].loading = true;
+            let _ = self.tabs[idx].webview.load_url(&real);
+        }
+        self.last_fps = 0;
+        self.push_fps();
         for t in &self.tabs {
             let _ = t.webview.set_visible(t.id == id);
         }
@@ -808,6 +1037,168 @@ impl App {
             }
             config::save(&c);
         }
+    }
+
+    fn set_cfg_flag(&mut self, f: impl FnOnce(&mut config::Config)) {
+        if let Ok(mut c) = self.config.lock() {
+            f(&mut c);
+            config::save(&c);
+        }
+    }
+
+    // ----- Game Mode ------------------------------------------------------
+
+    /// Bật/tắt Chế độ Game: nâng ưu tiên tiến trình + tắt cuộn mượt (giảm độ trễ).
+    fn set_game_mode(&mut self, on: bool, auto: bool) {
+        self.game_auto = auto && on;
+        self.set_cfg_flag(|c| c.game_mode = on);
+        set_priority_boost(on);
+        self.apply_smooth_scrolling(!on);
+        self.push_state();
+    }
+
+    /// Áp dụng “cuộn mượt” cho mọi webview đang mở (chỉ Linux).
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    fn apply_smooth_scrolling(&mut self, on: bool) {
+        use webkit2gtk::{SettingsExt, WebViewExt};
+        for wv in self
+            .tabs
+            .iter()
+            .map(|t| &t.webview)
+            .chain(std::iter::once(&self.chrome))
+        {
+            if let Some(s) = wv.webview().settings() {
+                s.set_enable_smooth_scrolling(on);
+            }
+        }
+    }
+
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    fn apply_smooth_scrolling(&mut self, _on: bool) {}
+
+    /// Bật/tắt đồng hồ FPS nổi.
+    fn set_fps_overlay(&mut self, on: bool) {
+        self.set_cfg_flag(|c| c.fps_overlay = on);
+        let _ = self.fps_hud.set_visible(on);
+        self.place_hud();
+        self.push_state();
+    }
+
+    /// Đổi màu nhấn giao diện (áp dụng ngay cho UI chính, nạp lại trang nội bộ).
+    fn set_accent(&mut self, id: &str) {
+        if config::ACCENTS.iter().any(|a| a.id == id) {
+            self.set_cfg_flag(|c| c.accent = id.to_string());
+            let a = config::accent_of(id);
+            let _ = self.chrome.evaluate_script(&format!(
+                "window.__accent&&window.__accent('{}','{}')",
+                a.c1, a.c2
+            ));
+            self.reload_internal();
+        }
+    }
+
+    /// Đặt lại mọi cài đặt về mặc định (giữ ảnh nền), không đụng dữ liệu web.
+    fn reset_all(&mut self) {
+        self.set_cfg_flag(|c| {
+            let keep = c.wallpaper.clone();
+            *c = config::Config::default();
+            c.wallpaper = keep;
+        });
+        let a = {
+            let c = self.config.lock().unwrap();
+            config::accent_of(&c.accent)
+        };
+        let _ = self.chrome.evaluate_script(&format!(
+            "window.__accent&&window.__accent('{}','{}')",
+            a.c1, a.c2
+        ));
+        self.reload_internal();
+        self.push_state();
+    }
+
+    /// Mở thư mục dữ liệu (bookmark, lịch sử, cookie…) bằng trình quản lý tệp.
+    fn open_data_dir(&self) {
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        let _ = std::process::Command::new("xdg-open").arg(store::dir()).spawn();
+        #[cfg(target_os = "macos")]
+        let _ = std::process::Command::new("open").arg(store::dir()).spawn();
+        #[cfg(target_os = "windows")]
+        let _ = std::process::Command::new("explorer").arg(store::dir()).spawn();
+    }
+
+    // ----- Sleeping Tabs --------------------------------------------------
+
+    /// Cho tab ngủ: nạp trang nội bộ siêu nhẹ, giữ nguyên url/tab trong phiên.
+    fn park(&mut self, id: u32) {
+        let Some(t) = self.tabs.iter_mut().find(|t| t.id == id) else { return };
+        if t.parked.is_some() || t.pinned || !t.url.starts_with("http") {
+            return;
+        }
+        let real = t.url.clone();
+        t.parked = Some(real.clone());
+        t.loading = false;
+        let _ = t
+            .webview
+            .load_url(&format!("{}sleep?url={}", INTERNAL_BASE, urlencode(&real)));
+    }
+
+    /// Cho các tab không dùng lâu đủ thời gian ngủ (tiết kiệm RAM).
+    fn sleep_check(&mut self) {
+        let (on, mins) = {
+            let c = self.config.lock().unwrap();
+            (c.sleeping_tabs, c.sleep_after_min)
+        };
+        if !on {
+            return;
+        }
+        let wait = std::time::Duration::from_secs(60u64 * mins.max(1) as u64);
+        let now = std::time::Instant::now();
+        let ids: Vec<u32> = self
+            .tabs
+            .iter()
+            .filter(|t| {
+                t.id != self.active
+                    && !t.pinned
+                    && t.parked.is_none()
+                    && !t.loading
+                    && t.url.starts_with("http")
+                    && now.duration_since(t.last_active) >= wait
+            })
+            .map(|t| t.id)
+            .collect();
+        for id in ids.iter().copied() {
+            self.park(id);
+        }
+        if !ids.is_empty() {
+            self.push_state();
+        }
+    }
+
+    // ----- FPS & thống kê -------------------------------------------------
+
+    fn push_fps(&self) {
+        let n = self.last_fps;
+        let _ = self
+            .fps_hud
+            .evaluate_script(&format!("window.__fps&&window.__fps({n})"));
+        let _ = self
+            .chrome
+            .evaluate_script(&format!("window.__fps&&window.__fps({n})"));
+    }
+
+    fn push_stats(&self) {
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        let d = json!({
+            "ram": mem_used_pct().unwrap_or(0),
+            "blocked": BLOCKED.load(std::sync::atomic::Ordering::Relaxed)
+        });
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
+        let d = json!({
+            "blocked": BLOCKED.load(std::sync::atomic::Ordering::Relaxed)
+        });
+        let _ = self
+            .chrome
+            .evaluate_script(&format!("window.__stats&&window.__stats({d})"));
     }
 
     fn set_wallpaper(&mut self, path: Option<String>) {
@@ -949,6 +1340,36 @@ impl App {
                 self.new_tab(Some(internal_url("settings")));
             }
             "wallpaper" => self.pick_wallpaper(),
+            "gamemode" => {
+                let on = !self.config.lock().map(|c| c.game_mode).unwrap_or(false);
+                self.set_game_mode(on, false);
+            }
+            "fpsoverlay" => {
+                let on = !self.config.lock().map(|c| c.fps_overlay).unwrap_or(false);
+                self.set_fps_overlay(on);
+            }
+            "fullscreen" => {
+                // F11: vào/ra toàn màn hình — tự bật/tắt Chế độ Game nếu cấu hình cho phép.
+                if self.host.window.fullscreen().is_some() {
+                    self.host.window.set_fullscreen(None);
+                    if self.game_auto {
+                        self.set_game_mode(false, false);
+                    }
+                } else {
+                    self.host
+                        .window
+                        .set_fullscreen(Some(Fullscreen::Borderless(None)));
+                    let auto = self
+                        .config
+                        .lock()
+                        .map(|c| c.auto_game_mode && !c.game_mode)
+                        .unwrap_or(false);
+                    if auto {
+                        self.set_game_mode(true, true);
+                    }
+                }
+            }
+            "resetsettings" => self.reset_all(),
             "nexttab" => self.cycle(1),
             "prevtab" => self.cycle(-1),
             "clearhistory" => {
@@ -1186,6 +1607,10 @@ impl App {
             UserEvent::Overlay(m) => self.overlay_cmd(&m),
             UserEvent::Tab(id, msg) => self.tab_event(id, msg),
             UserEvent::Wallpaper(path) => self.set_wallpaper(path),
+            UserEvent::StatsTick => {
+                self.sleep_check();
+                self.push_stats();
+            }
         }
     }
 
@@ -1195,6 +1620,14 @@ impl App {
             "ready" => {
                 self.layout();
                 self.push_state();
+                let a = {
+                    let c = self.config.lock().unwrap();
+                    config::accent_of(&c.accent)
+                };
+                let _ = self.chrome.evaluate_script(&format!(
+                    "window.__accent&&window.__accent('{}','{}')",
+                    a.c1, a.c2
+                ));
                 if self.active_tab().map(|t| t.url.is_empty()).unwrap_or(false) {
                     self.focus_url();
                 }
@@ -1283,10 +1716,38 @@ impl App {
                         }
                         self.push_state();
                     }
+                    // ----- FPS & chặn quảng cáo (page.js / adblock.js) -----
+                    "fps" => {
+                        if id == self.active {
+                            if let Ok(n) = arg.parse::<u32>() {
+                                self.last_fps = n;
+                                self.push_fps();
+                            }
+                        }
+                    }
+                    "adblock" => {
+                        if let Ok(n) = arg.parse::<u32>() {
+                            BLOCKED.fetch_add(n, std::sync::atomic::Ordering::Relaxed);
+                        }
+                    }
                     // ----- cài đặt từ trang chủ / trang cài đặt -----
                     "setengine" => self.set_engine(arg),
                     "setua" => self.set_flag(Some(arg == "1"), None),
                     "setgpu" => self.set_flag(None, Some(arg == "1")),
+                    "setaccent" => self.set_accent(arg),
+                    "setgamemode" => self.set_game_mode(arg == "1", false),
+                    "setautogame" => self.set_cfg_flag(|c| c.auto_game_mode = arg == "1"),
+                    "setfps" => self.set_fps_overlay(arg == "1"),
+                    "setadblock" => self.set_cfg_flag(|c| c.adblock = arg == "1"),
+                    "setsleep" => self.set_cfg_flag(|c| c.sleeping_tabs = arg == "1"),
+                    "setsleepmin" => {
+                        if let Ok(v) = arg.parse::<u32>() {
+                            self.set_cfg_flag(|c| c.sleep_after_min = v.clamp(1, 240));
+                        }
+                    }
+                    "setgamerhome" => self.set_cfg_flag(|c| c.gamer_home = arg == "1"),
+                    "resetsettings" => self.reset_all(),
+                    "opendatadir" => self.open_data_dir(),
                     "pickwallpaper" => self.pick_wallpaper(),
                     "clearwallpaper" => self.set_wallpaper(None),
                     "wpbegin" => self.wp_begin(arg),
@@ -1299,7 +1760,7 @@ impl App {
                 let mut hist: Option<(String, String)> = None;
                 let mut is_active = false;
                 if let Some(tab) = self.tabs.iter_mut().find(|x| x.id == id) {
-                    if tab.pending.is_some() {
+                    if tab.pending.is_some() || tab.parked.is_some() {
                         return;
                     }
                     tab.title = if t.trim().is_empty() { "Đang tải…".into() } else { t };
@@ -1318,7 +1779,7 @@ impl App {
             }
             TabMsg::Url(u) => {
                 if let Some(tab) = self.tabs.iter_mut().find(|x| x.id == id) {
-                    if tab.pending.is_some() {
+                    if tab.pending.is_some() || tab.parked.is_some() {
                         return;
                     }
                     let new = display_url(&u);
@@ -1333,7 +1794,7 @@ impl App {
                 let mut record: Option<(String, String)> = None;
                 let mut home = false;
                 if let Some(tab) = self.tabs.iter_mut().find(|x| x.id == id) {
-                    if tab.pending.is_some() {
+                    if tab.pending.is_some() || tab.parked.is_some() {
                         return;
                     }
                     tab.loading = l;
@@ -1469,11 +1930,29 @@ fn main() {
     }
 
     let overlay = make_overlay(&host, &mut web_context, &proxy);
+    let fps_hud = make_hud(&host, &mut web_context);
+
+    // Đồng hồ định kỳ: ngủ tab + cập nhật RAM/quảng cáo đã chặn trên UI.
+    {
+        let p = proxy.clone();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(std::time::Duration::from_secs(5));
+            if p.send_event(UserEvent::StatsTick).is_err() {
+                break;
+            }
+        });
+    }
+
+    // Game Mode bật sẵn trong cấu hình: áp dụng ưu tiên tiến trình ngay.
+    if config.lock().map(|c| c.game_mode).unwrap_or(false) {
+        set_priority_boost(true);
+    }
 
     let mut app = App {
         host,
         chrome,
         overlay,
+        fps_hud,
         tabs: Vec::new(),
         active: 0,
         next_id: 1,
@@ -1489,6 +1968,8 @@ fn main() {
         config,
         web_context,
         wp_out: None,
+        last_fps: 0,
+        game_auto: false,
     };
     app.restore();
 

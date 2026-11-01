@@ -21,6 +21,8 @@
         else if (/^[1-9]$/.test(k)) a = 'tab' + k;
       } else if (k === 'F5') a = 'reload';
       else if (k === 'F12') a = 'devtools';
+      else if (k === 'F11') a = 'fullscreen';
+      else if (k === 'F9') a = 'gamemode';
       else if (e.altKey && k === 'ArrowLeft') a = 'back';
       else if (e.altKey && k === 'ArrowRight') a = 'fwd';
       if (a) {
