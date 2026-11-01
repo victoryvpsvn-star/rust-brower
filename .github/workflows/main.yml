@@ -3,85 +3,86 @@ name: Build
 on:
   push:
     branches: [main, master]
-    tags: ["v*"]
-  pull_request:
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
   contents: write
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
-  build:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: linux-x64
-            os: ubuntu-22.04
-            bin: aurora
-            ext: tar.gz
-          - name: windows-x64
-            os: windows-latest
-            bin: aurora.exe
-            ext: zip
-          - name: macos-arm64
-            os: macos-latest
-            bin: aurora
-            ext: tar.gz
-
+  build-linux:
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cài thư viện hệ thống (Linux)
-        if: runner.os == 'Linux'
+      - name: Cài dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev libxdo-dev pkg-config
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Build release
+      - name: Build
         run: cargo build --release
 
-      - name: Đóng gói (Linux / macOS)
-        if: runner.os != 'Windows'
+      - name: Đóng gói
         run: |
-          mkdir -p dist/aurora
-          cp target/release/${{ matrix.bin }} dist/aurora/
-          tar -C dist -czf aurora-${{ matrix.name }}.tar.gz aurora
-
-      - name: Đóng gói (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force dist/aurora | Out-Null
-          Copy-Item target/release/${{ matrix.bin }} dist/aurora/
-          Compress-Archive -Path dist/aurora -DestinationPath aurora-${{ matrix.name }}.zip
+          mkdir -p artifact
+          cp target/release/aurora artifact/
+          ldd artifact/aurora || true
 
       - uses: actions/upload-artifact@v4
         with:
-          name: aurora-${{ matrix.name }}
-          path: aurora-${{ matrix.name }}.${{ matrix.ext }}
-          if-no-files-found: error
+          name: aurora-linux-x64
+          path: artifact/
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release
+      - name: Đóng gói
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifact
+          Copy-Item target/release/aurora.exe artifact/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-windows-x64
+          path: artifact/
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release
+      - name: Đóng gói
+        run: |
+          mkdir -p artifact
+          cp target/release/aurora artifact/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurora-macos-arm64
+          path: artifact/
 
   release:
-    name: Phát hành
-    needs: build
     if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: out
           merge-multiple: true
+          path: bins
       - uses: softprops/action-gh-release@v2
         with:
-          files: out/*
+          files: bins/*
           generate_release_notes: true
