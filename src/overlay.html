@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<style>
+  :root { --card: #1d1f27; --hover: #272a35; --sel: #343850; --text: #eceef6; --mut: #8a8fa3; --line: #2e313d; --a1: #8b7bff; color-scheme: dark; }
+  @media (prefers-color-scheme: light) {
+    :root { --card: #ffffff; --hover: #eef0f6; --sel: #e1e4fb; --text: #1a1c26; --mut: #6a7086; --line: #d3d6e2; --a1: #6c5cf0; color-scheme: light; }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+  html, body { height: 100%; background: transparent; overflow: hidden; font: 13.5px/1.25 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--text); }
+  svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .card { height: 100%; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  #list { padding: 8px; display: none; }
+  .row { display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: 9px; cursor: default; }
+  .row:hover { background: var(--hover); }
+  .row.sel { background: var(--sel); }
+  .row .ic { width: 22px; display: grid; place-items: center; color: var(--mut); }
+  .row.sel .ic { color: var(--a1); }
+  .row .t { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .row .s { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--mut); font-size: 12px; }
+  .row.hint { opacity: .7; }
+
+  #find { display: none; align-items: center; gap: 6px; height: 100%; padding: 0 8px 0 14px; }
+  #fq { flex: 1; min-width: 0; height: 32px; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: 14px; user-select: text; -webkit-user-select: text; }
+  #fq::placeholder { color: var(--mut); }
+  .b { width: 30px; height: 30px; border: 0; border-radius: 8px; background: none; color: var(--mut); display: grid; place-items: center; cursor: pointer; }
+  .b:hover { background: var(--hover); color: var(--text); }
+</style>
+</head>
+<body>
+<div class="card">
+  <div id="list"></div>
+  <div id="find">
+    <svg viewBox="0 0 24 24" style="color:var(--mut)"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+    <input id="fq" placeholder="Tìm trong trang" spellcheck="false" autocomplete="off">
+    <button class="b" id="fp" title="Trước (Shift+Enter)"><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button>
+    <button class="b" id="fn" title="Sau (Enter)"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+    <button class="b" id="fx" title="Đóng (Esc)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+</div>
+<script>
+  const $ = (s) => document.querySelector(s);
+  const send = (m) => { try { window.ipc.postMessage(m); } catch (e) {} };
+  const ICONS = {
+    go: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+    bang: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+    bookmark: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
+    history: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    command: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+    hint: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>'
+  };
+
+  function show(which) {
+    $('#list').style.display = which === 'list' ? 'block' : 'none';
+    $('#find').style.display = which === 'find' ? 'flex' : 'none';
+  }
+
+  window.__suggest = (d) => {
+    const list = $('#list');
+    list.replaceChildren();
+    d.items.forEach((it, i) => {
+      const r = document.createElement('div');
+      r.className = 'row' + (i === d.sel ? ' sel' : '') + (it.k === 'hint' ? ' hint' : '');
+      r.innerHTML = '<span class="ic"><svg viewBox="0 0 24 24">' + (ICONS[it.k] || ICONS.go) + '</svg></span><span class="t"></span><span class="s"></span>';
+      r.querySelector('.t').textContent = it.t;
+      r.querySelector('.s').textContent = it.s;
+      r.addEventListener('mousedown', (e) => { e.preventDefault(); send('pick|' + i); });
+      list.appendChild(r);
+    });
+    show('list');
+  };
+
+  window.__find = () => { show('find'); const q = $('#fq'); q.focus(); q.select(); };
+
+  const q = $('#fq');
+  q.addEventListener('input', () => send('find|' + q.value));
+  q.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); send('findnext|' + q.value + '|' + (e.shiftKey ? 1 : 0)); }
+    else if (e.key === 'Escape') send('findclose|');
+  });
+  $('#fp').onclick = () => send('findnext|' + q.value + '|1');
+  $('#fn').onclick = () => send('findnext|' + q.value + '|0');
+  $('#fx').onclick = () => send('findclose|');
+</script>
+</body>
+</html>
